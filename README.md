@@ -1,5 +1,7 @@
 # NT Performance — NTPERF31
 
+<img width="802" height="640" alt="image" src="https://github.com/user-attachments/assets/78e144cd-bc05-4307-9ec1-e1f990f51e62" />
+
 ### Windows NT 3.1, now with substantially more green graphs.
 
 Windows NT 3.1 has the blue title bars. It has Program Manager. It has File Manager. It has a proper operating system lurking beneath a desktop that looks as though it would like you to fax it something.
