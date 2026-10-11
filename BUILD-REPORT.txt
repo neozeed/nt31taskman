@@ -1,0 +1,133 @@
+NTPERF31 R2 - Processes tab build and validation
+
+Target: released Windows NT 3.1 x86.
+Baseline: user screenshot confirms R1 Performance view running on NT 3.1 SP3.
+R2 new UI and termination path: native runtime test PENDING.
+
+MinGW-w64 GCC 13.2.0, -std=c89 -pedantic -Wall -Wextra -Werror.
+Instruction target: -march=i386 -mno-sse -mno-sse2.
+No C runtime (-nostdlib); custom entry; GUI/OS versions 3.10.
+Compilation and linking: PASS, zero warnings.
+PE target/version/import assertions: PASS.
+Direct DLLs: KERNEL32, USER32, GDI32 only.
+New process operation imports: OpenProcess, GetProcessTimes, TerminateProcess,
+CloseHandle. Native enumeration is through dynamic NTDLL lookup.
+No actual NT 3.1 DLL export-table comparison or UI rendering test performed.
+No process has been terminated in this build environment.
+
+PASS: 64-bit rollover/reset, busy vs idle/kernel, SMP normalization, zero delta, clamp
+PASS: NT 3.1 offsets, pointer bounds, truncated/invalid records, empty names, PID reuse identity
+
+Executable bytes: 50673
+SHA256: c257dee17d5d1058c4e5d141c30719dbf719a3f7f5ade09cba3e5d61b3e2ac57
+
+The Import Tables (interpreted .idata section contents)
+ vma:            Hint    Time      Forward  DLL       First
+                 Table   Stamp     Chain    Name      Thunk
+ 0000a000	0000a050 00000000 00000000 0000a914 0000a1c8
+
+	DLL Name: GDI32.dll
+	vma:  Hint/Ord Member-Name Bound-To
+	a340	   20  BitBlt
+	a34a	   49  CreateCompatibleBitmap
+	a364	   50  CreateCompatibleDC
+	a37a	   63  CreateFontA
+	a388	   79  CreatePen
+	a394	   90  CreateSolidBrush
+	a3a8	  327  DeleteDC
+	a3b4	  330  DeleteObject
+	a3c4	  414  ExtTextOutA
+	a3d2	  563  GetDeviceCaps
+	a3e2	  631  GetStockObject
+	a3f4	  649  GetTextExtentPointA
+	a40a	  655  GetTextMetricsA
+	a41c	  674  LineTo
+	a426	  694  MoveToEx
+	a432	  797  SelectObject
+	a442	  804  SetBkColor
+	a450	  805  SetBkMode
+	a45c	  833  SetPixel
+	a468	  844  SetTextColor
+	a478	  847  SetViewportOrgEx
+	a48c	  862  TextOutA
+
+ 0000a014	0000a0ac 00000000 00000000 0000a978 0000a224
+
+	DLL Name: KERNEL32.dll
+	vma:  Hint/Ord Member-Name Bound-To
+	a498	  136  CloseHandle
+	a4a6	  353  ExitProcess
+	a4b4	  542  GetCurrentProcessId
+	a4ca	  615  GetLastError
+	a4da	  635  GetModuleHandleA
+	a4ee	  692  GetProcAddress
+	a500	  708  GetProcessTimes
+	a512	  747  GetSystemInfo
+	a522	  784  GetTickCount
+	a532	  801  GetVersion
+	a540	  821  GlobalAlloc
+	a54e	  828  GlobalFree
+	a55c	  832  GlobalLock
+	a56a	  833  GlobalMemoryStatus
+	a580	  840  GlobalUnlock
+	a590	 1021  MulDiv
+	a59a	 1053  OpenProcess
+	a5a8	 1397  TerminateProcess
+	a5bc	 1518  WideCharToMultiByte
+	a5d2	 1572  lstrcmpiA
+	a5de	 1575  lstrcpyA
+	a5ea	 1581  lstrlenA
+
+ 0000a028	0000a108 00000000 00000000 0000aa44 0000a280
+
+	DLL Name: USER32.dll
+	vma:  Hint/Ord Member-Name Bound-To
+	a5f6	    4  AdjustWindowRect
+	a60a	   12  AppendMenuA
+	a618	   18  BeginPaint
+	a626	   70  CheckMenuItem
+	a636	   82  CloseClipboard
+	a648	  116  CreateMenu
+	a656	  117  CreatePopupMenu
+	a668	  120  CreateWindowExA
+	a67a	  169  DefWindowProcA
+	a68c	  184  DestroyWindow
+	a69c	  192  DispatchMessageA
+	a6b0	  214  DrawFocusRect
+	a6c0	  223  DrawTextA
+	a6cc	  238  EmptyClipboard
+	a6de	  245  EnableWindow
+	a6ee	  250  EndPaint
+	a6fa	  278  FillRect
+	a706	  285  FrameRect
+	a712	  311  GetClientRect
+	a722	  326  GetDC
+	a72a	  364  GetKeyState
+	a738	  379  GetMenu
+	a742	  393  GetMessageA
+	a750	  455  GetSysColor
+	a75e	  459  GetSystemMetrics
+	a772	  524  InflateRect
+	a780	  549  InvalidateRect
+	a792	  563  IsDialogMessageA
+	a7a6	  597  KillTimer
+	a7b2	  602  LoadCursorA
+	a7c0	  606  LoadIconA
+	a7cc	  650  MessageBoxA
+	a7da	  663  MoveWindow
+	a7e8	  674  OpenClipboard
+	a7f8	  693  PostQuitMessage
+	a80a	  740  RegisterClassA
+	a81c	  772  ReleaseDC
+	a828	  795  SendMessageA
+	a838	  810  SetClipboardData
+	a84c	  830  SetFocus
+	a858	  867  SetRect
+	a862	  885  SetTimer
+	a86e	  899  SetWindowPos
+	a87e	  925  ShowWindow
+	a88c	  957  TranslateMessage
+	a8a0	  983  UpdateWindow
+	a8b0	 1020  wsprintfA
+
+ 0000a03c	00000000 00000000 00000000 00000000 00000000
