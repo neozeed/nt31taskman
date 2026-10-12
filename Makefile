@@ -1,13 +1,25 @@
-CC = i686-w64-mingw32-gcc
-CFLAGS = -Os -std=c89 -pedantic -Wall -Wextra -Werror -march=i386 -mno-sse -mno-sse2 -fno-builtin -fno-stack-protector
-LDFLAGS = -nostdlib -Wl,--entry,_WinMainCRTStartup -Wl,--subsystem,windows:3.10 -Wl,--major-os-version,3,--minor-os-version,10 -Wl,--disable-dynamicbase,--disable-nxcompat -Wl,--no-insert-timestamp
+# Nmake macros for building Windows 32-Bit apps
 
-all: NTPERF31.EXE
+!include <ntwin32.mak>
 
-NTPERF31.EXE: ntperf31.c counters.h process.h process-ui.inc
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< -luser32 -lgdi32 -lkernel32
+all: taskman.exe
 
-clean:
-	rm -f NTPERF31.EXE
+OBJS= NTPERF31.obj 
 
-.PHONY: all clean
+NTPERF31.obj: NTPERF31.C
+    $(cc) $(cflags) $(cvars) NTPERF31.C
+
+TEST_COU.obj: TEST_COU.C
+    $(cc) $(cflags) $(cvars) TEST_COU.C
+
+TEST_PRO.obj: TEST_PRO.C
+    $(cc) $(cflags) $(cvars) TEST_PRO.c
+
+taskman.exe: $(OBJS)
+    $(link) $(guiflags) -out:taskman.exe $(OBJS) $(guilibs)
+
+testc.exe: TEST_COU.obj
+    $(link) $(conflags) -out:testc.exe TEST_COU.obj $(conlibs)
+
+testp.exe: TEST_PRO.obj
+    $(link) $(conflags) -out:testc.exe TEST_PRO.obj $(conlibs)
