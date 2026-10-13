@@ -1,4 +1,4 @@
-/* NTPERF31 R2 - graph-focused performance monitor for released NT 3.1.
+/* NTPERF31 R3 - graph-focused performance monitor for released NT 3.1.
  * C89, plain USER/GDI, no CRT, common controls, PSAPI or Toolhelp.
  * See README.md for the historical structure references and test limits.
  */
@@ -17,6 +17,8 @@
 #define ID_REFRESH 107
 #define ID_COPY 108
 #define ID_ABOUT 109
+#define ID_RUN 110
+#define ID_PERCPU 111
 #define BAD (-1)
 #define MISMATCH ((LONG)0xc0000004L)
 
@@ -40,6 +42,8 @@ static SAMPLE sample;
 static CPUINFO previous[CPU_MAX];
 static int previousValid, previousCount;
 static int cpuHistory[HISTORY], kernelHistory[HISTORY];
+static int perCpuHistory[CPU_MAX][HISTORY], perKernelHistory[CPU_MAX][HISTORY];
+static int perCpu;
 static DWORD memHistory[HISTORY];
 static int memValid[HISTORY];
 static int nextSample, historyCount;
@@ -120,6 +124,10 @@ static void takeSample(void)
     DWORD i, count;
     MEMORYSTATUS memory;
 
+    for (i = 0; i < CPU_MAX; ++i) {
+        perCpuHistory[i][nextSample] = BAD;
+        perKernelHistory[i][nextSample] = BAD;
+    }
     sample.cpu = sample.kernel = BAD;
     count = sysInfo.dwNumberOfProcessors;
     if (!count || count > CPU_MAX) count = CPU_MAX;
@@ -127,8 +135,12 @@ static void takeSample(void)
     returned = 0;
     sample.cpuStatus = query(8, current, count * sizeof(CPUINFO), &returned);
     if (sample.cpuStatus >= 0 && (!returned || returned == count * sizeof(CPUINFO))) {
-        if (previousValid && previousCount == (int)count)
+        if (previousValid && previousCount == (int)count) {
             cpuPercentages(current, previous, count, &sample.cpu, &sample.kernel);
+            for (i = 0; i < count; ++i)
+                cpuPercentages(current+i, previous+i, 1,
+                    &perCpuHistory[i][nextSample], &perKernelHistory[i][nextSample]);
+        }
         for (i = 0; i < count; ++i) previous[i] = current[i];
         previousValid = 1;
         previousCount = (int)count;
@@ -210,7 +222,7 @@ static void inset(HDC dc, int x, int y, int w, int h)
     rect(dc,x,y,w,h,RGB(0,0,0));
 }
 
-static void graphTrace(HDC dc, int x, int y, int w, int h, int type, COLORREF color)
+static void graphTrace(HDC dc, int x, int y, int w, int h, int type, int processor, COLORREF color)
 {
     int i, index, value, px, py, drawing;
     HPEN pen, old;
@@ -219,8 +231,8 @@ static void graphTrace(HDC dc, int x, int y, int w, int h, int type, COLORREF co
     drawing = 0;
     for (i = 0; i < historyCount; ++i) {
         index = (nextSample - historyCount + i + HISTORY) % HISTORY;
-        if (type == 0) value = cpuHistory[index];
-        else if (type == 1) value = kernelHistory[index];
+        if (type == 0) value = processor < 0 ? cpuHistory[index] : perCpuHistory[processor][index];
+        else if (type == 1) value = processor < 0 ? kernelHistory[index] : perKernelHistory[processor][index];
         else value = memValid[index] && sample.memoryValid ?
             percentage((double)memHistory[index],(double)sample.limitKB) : BAD;
         if (value == BAD) { drawing = 0; continue; }
@@ -235,9 +247,10 @@ static void graphTrace(HDC dc, int x, int y, int w, int h, int type, COLORREF co
     DeleteObject(pen);
 }
 
-static void graph(HDC dc, int x, int y, int w, int h, int memory)
+static void graph(HDC dc, int x, int y, int w, int h, int memory, int processor)
 {
     int i, offset, step;
+    if (w < 2 || h < 2) return;
     inset(dc,x,y,w,h);
     step = 12;
     offset = (int)((sampleSerial * (DWORD)(w-1) / (HISTORY-1)) % step);
@@ -245,8 +258,33 @@ static void graph(HDC dc, int x, int y, int w, int h, int memory)
         line(dc,i,y,i,y+h,RGB(0,70,0));
     for (i=y+h-1; i>=y; i-=12)
         line(dc,x,i,x+w,i,RGB(0,70,0));
-    graphTrace(dc,x,y,w,h,memory ? 2 : 0,RGB(0,255,0));
-    if (!memory && showKernel) graphTrace(dc,x,y,w,h,1,RGB(255,64,64));
+    graphTrace(dc,x,y,w,h,memory ? 2 : 0,processor,RGB(0,255,0));
+    if (!memory && showKernel) graphTrace(dc,x,y,w,h,1,processor,RGB(255,64,64));
+}
+
+/* Tile in processor-number order, left to right then top to bottom. */
+static void cpuGraphs(HDC dc, int x, int y, int w, int h)
+{
+    int count, cols, rows, i, left, top, right, bottom;
+    char label[24];
+    count = (int)sysInfo.dwNumberOfProcessors;
+    if (count < 1 || count > CPU_MAX) count = CPU_MAX;
+    if (!perCpu || count == 1) { graph(dc,x,y,w,h,0,-1); return; }
+    cols = count;
+    if (cols > 8) cols = 8;
+    while (cols > 1 && w / cols < 28) --cols;
+    rows = (count+cols-1)/cols;
+    for (i=0; i<count; ++i) {
+        left = x+(i%cols)*w/cols;
+        right = x+(i%cols+1)*w/cols-5;
+        top = y+(i/cols)*h/rows;
+        bottom = y+(i/cols+1)*h/rows-4;
+        graph(dc,left,top,right-left,bottom-top,0,i);
+        wsprintfA(label,"%d",i);
+        SetTextColor(dc,RGB(180,220,180));
+        text(dc,left+3,top+1,label);
+    }
+    SetTextColor(dc,GetSysColor(COLOR_BTNTEXT));
 }
 
 static void meter(HDC dc, int x, int y, int w, int h, int memory)
@@ -305,15 +343,15 @@ static void paintContents(HDC dc, int w, int h)
     graphX = gap+meterWidth+gap;
     graphWidth = w-graphX-gap;
     rowH = (h-232)/2;
-    if (rowH < 90) rowH = 90;
+    if (rowH < 62) rowH = 62;
     group(dc,gap,8,meterWidth,rowH,"CPU Usage");
     group(dc,graphX,8,graphWidth,rowH,"CPU Usage History");
     meter(dc,gap+9,31,meterWidth-18,rowH-34,0);
-    graph(dc,graphX+9,31,graphWidth-18,rowH-34,0);
+    cpuGraphs(dc,graphX+9,31,graphWidth-18,rowH-34);
     group(dc,gap,rowH+16,meterWidth,rowH,"MEM Usage");
     group(dc,graphX,rowH+16,graphWidth,rowH,"Memory Usage History");
     meter(dc,gap+9,rowH+39,meterWidth-18,rowH-34,1);
-    graph(dc,graphX+9,rowH+39,graphWidth-18,rowH-34,1);
+    graph(dc,graphX+9,rowH+39,graphWidth-18,rowH-34,1,-1);
     lowerY = rowH*2+32;
     boxH = 78;
     columnWidth = (w-3*gap)/2;
@@ -381,7 +419,7 @@ static void copyDiagnostics(HWND hwnd)
     char *destination;
     DWORD length;
     wsprintfA(buffer,
-        "NTPERF31 R2 (x86)\r\nWindows version: %lu.%lu build %lu\r\n"
+        "NTPERF31 R3 (x86)\r\nWindows version: %lu.%lu build %lu\r\n"
         "Processors: %lu; page size: %lu\r\n"
         "Native query status: CPU=%08lX Performance=%08lX Processes=%08lX Handles=%08lX\r\n"
         "CPU=%d%% Kernel=%d%% MemoryValid=%d TotalsValid=%d HandlesValid=%d\r\n"
@@ -410,6 +448,7 @@ static void updateMenu(HWND hwnd)
 {
     HMENU menu;
     menu = GetMenu(hwnd);
+    CheckMenuItem(menu,ID_PERCPU,MF_BYCOMMAND|(perCpu?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_TOP,MF_BYCOMMAND|(topmost?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_KERNEL,MF_BYCOMMAND|(showKernel?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_PAUSE,MF_BYCOMMAND|(paused?MF_CHECKED:MF_UNCHECKED));
@@ -417,6 +456,8 @@ static void updateMenu(HWND hwnd)
     CheckMenuItem(menu,ID_NORMAL,MF_BYCOMMAND|(interval==1000?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_SLOW,MF_BYCOMMAND|(interval==2000?MF_CHECKED:MF_UNCHECKED));
 }
+
+#include "run-ui.inc"
 
 static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
 {
@@ -430,7 +471,7 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
     case WM_ERASEBKGND: return 1;
     case WM_GETMINMAXINFO:
         limits = (MINMAXINFO *)lp;
-        SetRect(&area,0,0,590,434);
+        SetRect(&area,0,0,480,390);
         AdjustWindowRect(&area,WS_OVERLAPPEDWINDOW,TRUE);
         limits->ptMinTrackSize.x = area.right-area.left;
         limits->ptMinTrackSize.y = area.bottom-area.top;
@@ -455,6 +496,8 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         else if (command == ID_LIST) updateProcessControls();
         else if (command == ID_ENDPROCESS) endSelectedProcess();
         else if (command >= ID_COLUMN && command < ID_COLUMN+COLUMNS) sortByColumn(command-ID_COLUMN);
+        else if (command == ID_RUN) showRunDialog(hwnd);
+        else if (command == ID_PERCPU) perCpu = !perCpu;
         else if (command == ID_EXIT) DestroyWindow(hwnd);
         else if (command == ID_TOP) {
             topmost = !topmost;
@@ -468,11 +511,11 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         } else if (command == ID_REFRESH) takeSample();
         else if (command == ID_COPY) copyDiagnostics(hwnd);
         else if (command == ID_ABOUT) MessageBoxA(hwnd,
-            "NTPERF31 R2\nNT 4-style performance graphs for Windows NT 3.1.\n\n"
+            "NTPERF31 R3\nNT 4-style performance graphs for Windows NT 3.1.\n\n"
             "Green: total CPU / committed memory.\nRed (optional): busy kernel CPU.\n"
             "Memory history is scaled to the current commit limit.\n\n"
             "F5: sample now   Space: pause/resume\n"
-            "R1 Performance view was live-tested on NT 3.1 SP3.\nR2 Processes view requires live validation.","About NTPERF31",MB_OK);
+            "Per-processor graphs: View > One graph per CPU.\nFile > Run starts a program.","About NTPERF31",MB_OK);
         else if (command == ID_FAST || command == ID_NORMAL || command == ID_SLOW) {
             interval = command==ID_FAST ? 500 : (command==ID_NORMAL ? 1000 : 2000);
             /* A constant sample interval makes the history time axis honest. */
@@ -519,6 +562,8 @@ static HMENU createMenu(void)
     HMENU menu, file, options, view, help;
     menu=CreateMenu(); file=CreatePopupMenu(); options=CreatePopupMenu();
     view=CreatePopupMenu(); help=CreatePopupMenu();
+    AppendMenuA(file,MF_STRING,ID_RUN,"&Run...");
+    AppendMenuA(file,MF_SEPARATOR,0,NULL);
     AppendMenuA(file,MF_STRING,ID_EXIT,"E&xit");
     AppendMenuA(options,MF_STRING,ID_TOP,"Always on &top");
     AppendMenuA(view,MF_STRING,ID_FAST,"&High speed (0.5 seconds)");
@@ -527,6 +572,7 @@ static HMENU createMenu(void)
     AppendMenuA(view,MF_SEPARATOR,0,NULL);
     AppendMenuA(view,MF_STRING,ID_PAUSE,"&Paused\tSpace");
     AppendMenuA(view,MF_STRING,ID_REFRESH,"&Refresh now\tF5");
+    AppendMenuA(view,MF_STRING,ID_PERCPU,"One graph per &CPU");
     AppendMenuA(view,MF_STRING,ID_KERNEL,"Show &kernel times");
     AppendMenuA(help,MF_STRING,ID_COPY,"&Copy diagnostics");
     AppendMenuA(help,MF_STRING,ID_ABOUT,"&About NTPERF31");
@@ -556,6 +602,7 @@ static void runApp(void)
         ExitProcess(1);
     }
     GetSystemInfo(&sysInfo);
+    perCpu = sysInfo.dwNumberOfProcessors > 1;
     dc = GetDC(NULL);
     dpi = GetDeviceCaps(dc,LOGPIXELSY);
     ReleaseDC(NULL,dc);
@@ -580,6 +627,7 @@ static void runApp(void)
         bounds.right-bounds.left,bounds.bottom-bounds.top,
         NULL,createMenu(),instance,NULL);
     if (!mainWindow) ExitProcess(3);
+    updateMenu(mainWindow);
     createProcessControls();
     takeSample();
     ShowWindow(mainWindow,SW_SHOWNORMAL);

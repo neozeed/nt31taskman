@@ -174,6 +174,7 @@ static void layoutProcessControls(void)
     width=r.right-26-GetSystemMetrics(SM_CXVSCROLL);
     /* Numeric columns total 379 px; name column receives the remainder. */
     columnWidths[0]=width-379;
+    if (columnWidths[0] < 55) columnWidths[0]=55;
     x=12;
     for (i=0;i<COLUMNS;++i) {
         MoveWindow(headers[i],x,42,columnWidths[i],22,TRUE);

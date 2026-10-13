@@ -24,6 +24,18 @@ then remove this comment wrapper to display them.
 
 -->
 
+## R3: the people demand more graphs
+
+- **One history graph per processor**, selected automatically on multiprocessor machines. Eight CPUs get eight independent traces, numbered 0–7. Use **View → One graph per CPU** to toggle the combined view; switching keeps the history. The CPU meter always shows overall usage.
+- **Smaller resizable window:** the client area now shrinks to 480 × 390 pixels, with CPU and memory histories shrinking in both dimensions. Statistics remain visible.
+- **File → Run…:** enter an executable and its arguments. Environment variables are expanded. Quote executable paths containing spaces. Enter starts it; Escape cancels. Errors leave the dialog open.
+
+Run examples: `notepad.exe`, `%SystemRoot%\system32\cmd.exe`, or `cmd.exe /c your-script.cmd`. This launches command lines with CreateProcess; documents and URLs are not opened through shell associations.
+
+The R3 executable builds cleanly and the portable tests pass, including eight distinct CPU loads. Live NT 3.1 verification of the new UI and SMP graphs is still pending.
+
+Cross-build: `make -f Makefile.cross`. The archive contains `NTPERF31.EXE`, source, and build notes.
+
 ## The good stuff
 
 ### Performance

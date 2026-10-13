@@ -5,8 +5,8 @@
 int main(void)
 {
     TIME64 before, after;
-    CPUINFO old[2], now[2];
-    int busy, kernel;
+    CPUINFO old[8], now[8];
+    int busy, kernel, i;
     before.high=9; before.low=0xfffffff0U;
     after.high=10; after.low=0x10;
     assert(timeDelta(after,before)==32.0);
@@ -29,6 +29,15 @@ int main(void)
     assert(busy==-1 && kernel==-1);
     assert(percentage(200.0,100.0)==100);
     assert(percentage(0.0,0.0)==-1);
+    memset(old,0,sizeof(old)); memset(now,0,sizeof(now));
+    for (i=0; i<8; ++i) {
+        now[i].idle.low=100-i*10;
+        now[i].kernel.low=100;
+        cpuPercentages(now+i,old+i,1,&busy,&kernel);
+        assert(busy==i*10 && kernel==i*10);
+    }
+    cpuPercentages(now,old,8,&busy,&kernel);
+    assert(busy==35 && kernel==35);
     puts("PASS: 64-bit rollover/reset, busy vs idle/kernel, SMP normalization, zero delta, clamp");
     return 0;
 }
