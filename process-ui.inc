@@ -83,20 +83,13 @@ static void populateList(const PROCDATA *selected, int top)
     InvalidateRect(processList,NULL,FALSE);
     updateProcessControls();
 }
-static void collectProcesses(DWORD length)
+static void collectProcesses(const PROCDATA *data, DWORD count)
 {
-    DWORD pos, count, i, j, now, elapsed;
-    NP_U32 next;
+    DWORD i, j, now, elapsed;
     PROCESSROW *rows, *oldRows;
-    PROCDATA decoded, selected;
-    int selection, haveSelection, top, chars;
+    PROCDATA selected;
+    int selection, haveSelection, top;
     double userDelta,kernelDelta;
-    pos=count=0;
-    do {
-        if (!decodeProcess(queryBuffer,length,(NP_U32)queryBuffer,pos,&decoded,&next))
-            goto malformed;
-        ++count; pos+=next;
-    } while (next);
     rows=(PROCESSROW *)GlobalAlloc(GMEM_FIXED,count*sizeof(PROCESSROW));
     if (!rows) goto malformed;
     now=GetTickCount(); elapsed=now-processTick;
@@ -104,23 +97,16 @@ static void collectProcesses(DWORD length)
     top=processList ? (int)SendMessageA(processList,LB_GETTOPINDEX,0,0) : 0;
     haveSelection=selection>=0 && (DWORD)selection<processCount;
     if (haveSelection) selected=processRows[selection].data;
-    pos=0; sample.threads=0;
+    sample.threads=0;
     for (i=0;i<count;++i) {
-        decodeProcess(queryBuffer,length,(NP_U32)queryBuffer,pos,&rows[i].data,&next);
+        rows[i].data=data[i];
         rows[i].cpu=BAD;
-        if (rows[i].data.nameBytes) {
-            chars=(int)(rows[i].data.nameBytes/2);
-            if (chars>250) chars=250;
-            chars=WideCharToMultiByte(CP_ACP,0,
-                (LPCWSTR)(queryBuffer+rows[i].data.nameOffset),chars,
-                rows[i].name,259,NULL,NULL);
-            rows[i].name[chars>0?chars:0]=0;
-        } else rows[i].name[0]=0;
+        lstrcpyA(rows[i].name,data[i].name);
         if (!rows[i].name[0]) {
             if (!rows[i].data.pid) lstrcpyA(rows[i].name,"System Idle Process");
             else wsprintfA(rows[i].name,"Process %lu",(DWORD)rows[i].data.pid);
         }
-        if (processBaseline && elapsed && sysInfo.dwNumberOfProcessors) {
+        if (processBaseline && elapsed && sample.cpuStatus>=0 && sysInfo.dwNumberOfProcessors) {
             for (j=0;j<processCount;++j) {
                 if (!sameProcess(&rows[i].data,&processRows[j].data)) continue;
                 userDelta=timeDelta(rows[i].data.user,processRows[j].data.user);
@@ -132,7 +118,6 @@ static void collectProcesses(DWORD length)
             }
         }
         sample.threads+=rows[i].data.threads;
-        pos+=next;
     }
     oldRows=processRows; processRows=rows; processCount=count;
     processTick=now; processBaseline=1;
@@ -207,8 +192,8 @@ static void drawProcessItem(const DRAWITEMSTRUCT *d)
         if(i==1) wsprintfA(buffer,"%lu",(DWORD)p->data.pid);
         if(i==2) { if(p->cpu<0) lstrcpyA(buffer,"--"); else wsprintfA(buffer,"%d",p->cpu); }
         if(i==3) wsprintfA(buffer,"%lu:%02lu:%02lu",seconds/3600,(seconds/60)%60,seconds%60);
-        if(i==4) wsprintfA(buffer,"%lu K",(DWORD)p->data.workingKB);
-        if(i==5) wsprintfA(buffer,"%lu K",(DWORD)p->data.virtualKB);
+        if(i==4) { formatSize(buffer,p->data.workingKB); lstrcatA(buffer," K"); }
+        if(i==5) { formatSize(buffer,p->data.virtualKB); lstrcatA(buffer," K"); }
         if(i==6) wsprintfA(buffer,"%lu",(DWORD)p->data.threads);
         SetRect(&cell,x+4,d->rcItem.top,x+columnWidths[i]-4,d->rcItem.bottom);
         DrawTextA(d->hDC,buffer,-1,&cell,DT_SINGLELINE|DT_VCENTER|DT_NOPREFIX|(i?DT_RIGHT:DT_LEFT));
@@ -303,7 +288,7 @@ static void createProcessControls(void)
     GetTextMetricsA(dc,&tm); rowHeight=tm.tmHeight+4;
     SelectObject(dc,old); ReleaseDC(mainWindow,dc);
     for(i=0;i<COLUMNS;++i) headers[i]=CreateWindowA("BUTTON",columnNames[i],
-        WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,1,1,mainWindow,(HMENU)(ID_COLUMN+i),instance,NULL);
+        WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,1,1,mainWindow,(HMENU)(WPARAM)(ID_COLUMN+i),instance,NULL);
     processList=CreateWindowA("LISTBOX","",WS_CHILD|WS_VISIBLE|WS_TABSTOP|WS_BORDER|WS_VSCROLL|
         LBS_OWNERDRAWFIXED|LBS_NOTIFY|LBS_NOINTEGRALHEIGHT,0,0,1,1,mainWindow,(HMENU)ID_LIST,instance,NULL);
     endButton=CreateWindowA("BUTTON","&End Process",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_PUSHBUTTON,

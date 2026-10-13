@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "process.h"
+#include "process-nt31.h"
 static void put(unsigned char *b, unsigned int at, NP_U32 n)
 {
     b[at]=(unsigned char)n; b[at+1]=(unsigned char)(n>>8);
@@ -12,6 +13,7 @@ int main(void)
     unsigned char b[320];
     PROCDATA p,old;
     NP_U32 next;
+    char number[24];
     CPUINFO c[1];
     int busy,kernel;
     memset(b,0,sizeof(b));
@@ -25,6 +27,7 @@ int main(void)
     assert(!next && p.pid==27 && p.threads==3);
     assert(p.workingKB==8 && p.virtualKB==64 && p.nameBytes==8 && p.nameOffset==0x88);
     assert(processTime(&p)==30000000.0);
+    formatSize(number,p.virtualKB); assert(!strcmp(number,"64"));
     old=p; assert(sameProcess(&old,&p));
     ++p.created.low; assert(!sameProcess(&old,&p));
     assert(!decodeProcess(b,0x87,0x10000,0,&p,&next));

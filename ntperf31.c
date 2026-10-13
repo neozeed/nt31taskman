@@ -1,12 +1,11 @@
-/* NTPERF31 R3 - graph-focused performance monitor for released NT 3.1.
- * C89, plain USER/GDI, no CRT, common controls, PSAPI or Toolhelp.
+/* NTPERF R4 - shared UI for NT 3.1 x86 and modern Win64.
+ * Plain USER/GDI, no CRT or common controls. PSAPI is Win64-only.
  * See README.md for the historical structure references and test limits.
  */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #define HISTORY 180
-#define CPU_MAX 32
 #define ID_EXIT 100
 #define ID_TOP 101
 #define ID_FAST 102
@@ -20,20 +19,8 @@
 #define ID_RUN 110
 #define ID_PERCPU 111
 #define BAD (-1)
-#define MISMATCH ((LONG)0xc0000004L)
+#include "backend.h"
 
-typedef LONG (WINAPI *QUERY)(ULONG, PVOID, ULONG, PULONG);
-typedef union { FARPROC generic; QUERY query; } QUERY_CAST;
-#include "process.h"
-
-typedef struct {
-    int cpu, kernel, memoryValid, totalsValid, handlesValid;
-    DWORD totalKB, availableKB, commitKB, limitKB, peakKB;
-    DWORD pagedKB, nonpagedKB, processes, threads, handles;
-    LONG cpuStatus, perfStatus, processStatus, handleStatus;
-} SAMPLE;
-
-static QUERY query;
 static HINSTANCE instance;
 static HWND mainWindow;
 static HFONT uiFont, meterFont;
@@ -44,14 +31,12 @@ static int previousValid, previousCount;
 static int cpuHistory[HISTORY], kernelHistory[HISTORY];
 static int perCpuHistory[CPU_MAX][HISTORY], perKernelHistory[CPU_MAX][HISTORY];
 static int perCpu;
-static DWORD memHistory[HISTORY];
+static NP_SIZE memHistory[HISTORY];
 static int memValid[HISTORY];
 static int nextSample, historyCount;
 static DWORD sampleSerial;
 static UINT interval = 1000;
 static int paused, topmost, showKernel;
-static BYTE *queryBuffer;
-static DWORD queryCapacity;
 static DWORD version;
 
 static void clearBytes(void *p, DWORD n)
@@ -61,68 +46,24 @@ static void clearBytes(void *p, DWORD n)
     while (n--) *b++ = 0;
 }
 
-static DWORD wordAt(const BYTE *p, DWORD off)
-{
-    return (DWORD)p[off] | ((DWORD)p[off+1] << 8) |
-           ((DWORD)p[off+2] << 16) | ((DWORD)p[off+3] << 24);
-}
-
-/* Class 5/16 requests can race process creation. Grow and retry, bounded. */
-static LONG variableQuery(ULONG kind, DWORD *length)
-{
-    LONG status;
-    ULONG needed;
-    DWORD capacity;
-    BYTE *replacement;
-    for (;;) {
-        if (!queryCapacity) {
-            queryCapacity = 65536;
-            queryBuffer = (BYTE *)GlobalAlloc(GMEM_FIXED, queryCapacity);
-            if (!queryBuffer) { queryCapacity = 0; return (LONG)0xc0000017L; }
-        }
-        needed = 0;
-        status = query(kind, queryBuffer, queryCapacity, &needed);
-        if (status >= 0) {
-            *length = needed ? needed : queryCapacity;
-            if (*length > queryCapacity) return (LONG)0xc000000dL;
-            return status;
-        }
-        if (status != MISMATCH && status != (LONG)0xc0000023L) return status;
-        capacity = queryCapacity * 2;
-        if (needed > capacity) capacity = needed;
-        if (capacity > 16UL * 1024UL * 1024UL) return status;
-        replacement = (BYTE *)GlobalAlloc(GMEM_FIXED, capacity);
-        if (!replacement) return (LONG)0xc0000017L;
-        GlobalFree((HGLOBAL)queryBuffer);
-        queryBuffer = replacement;
-        queryCapacity = capacity;
-    }
-}
-
 #include "process-ui.inc"
 
 static void sampleTotals(void)
 {
-    DWORD length;
-    sample.totalsValid = 0;
-    sample.handlesValid = 0;
-    sample.processStatus = variableQuery(5, &length);
-    if (sample.processStatus >= 0) collectProcesses(length);
-    else { processBaseline=0; updateProcessControls(); }
-    sample.handleStatus = variableQuery(16, &length);
-    if (sample.handleStatus >= 0 && length >= 4) {
-        sample.handles = wordAt(queryBuffer, 0);
-        sample.handlesValid = 1;
-    }
+    PROCDATA *rows;
+    DWORD count;
+    sample.totalsValid=0;
+    sample.processStatus=backendReadProcesses(&rows,&count,&sample.processQueryStatus);
+    if (sample.processStatus>=0) {
+        collectProcesses(rows,count);
+        GlobalFree((HGLOBAL)rows);
+    } else { processBaseline=0; updateProcessControls(); }
 }
 
 static void takeSample(void)
 {
-    CPUINFO current[CPU_MAX];
-    DWORD perf[78]; /* Exactly 0x138 bytes for NT 3.1. */
-    ULONG returned;
+    static CPUINFO current[CPU_MAX];
     DWORD i, count;
-    MEMORYSTATUS memory;
 
     for (i = 0; i < CPU_MAX; ++i) {
         perCpuHistory[i][nextSample] = BAD;
@@ -131,10 +72,8 @@ static void takeSample(void)
     sample.cpu = sample.kernel = BAD;
     count = sysInfo.dwNumberOfProcessors;
     if (!count || count > CPU_MAX) count = CPU_MAX;
-    clearBytes(current, sizeof(current));
-    returned = 0;
-    sample.cpuStatus = query(8, current, count * sizeof(CPUINFO), &returned);
-    if (sample.cpuStatus >= 0 && (!returned || returned == count * sizeof(CPUINFO))) {
+    sample.cpuStatus = backendReadCpu(current,count);
+    if (sample.cpuStatus >= 0) {
         if (previousValid && previousCount == (int)count) {
             cpuPercentages(current, previous, count, &sample.cpu, &sample.kernel);
             for (i = 0; i < count; ++i)
@@ -146,21 +85,7 @@ static void takeSample(void)
         previousCount = (int)count;
     } else previousValid = 0;
 
-    clearBytes(perf, sizeof(perf));
-    returned = 0;
-    sample.perfStatus = query(2, perf, sizeof(perf), &returned);
-    sample.memoryValid = sample.perfStatus >= 0 && (!returned || returned >= 120);
-    if (sample.memoryValid) {
-        memory.dwLength = sizeof(memory);
-        GlobalMemoryStatus(&memory);
-        sample.totalKB = memory.dwTotalPhys / 1024;
-        sample.availableKB = perf[11] * (sysInfo.dwPageSize / 1024);
-        sample.commitKB = perf[12] * (sysInfo.dwPageSize / 1024);
-        sample.limitKB = perf[13] * (sysInfo.dwPageSize / 1024);
-        sample.peakKB = perf[14] * (sysInfo.dwPageSize / 1024);
-        sample.pagedKB = perf[28] * (sysInfo.dwPageSize / 1024);
-        sample.nonpagedKB = perf[29] * (sysInfo.dwPageSize / 1024);
-    }
+    backendReadMemory(&sample,&sysInfo);
     sampleTotals();
     cpuHistory[nextSample] = sample.cpu;
     kernelHistory[nextSample] = sample.kernel;
@@ -282,7 +207,7 @@ static void cpuGraphs(HDC dc, int x, int y, int w, int h)
         graph(dc,left,top,right-left,bottom-top,0,i);
         wsprintfA(label,"%d",i);
         SetTextColor(dc,RGB(180,220,180));
-        text(dc,left+3,top+1,label);
+        if (bottom-top>=14 && right-left>=18) text(dc,left+3,top+1,label);
     }
     SetTextColor(dc,GetSysColor(COLOR_BTNTEXT));
 }
@@ -307,7 +232,7 @@ static void meter(HDC dc, int x, int y, int w, int h, int memory)
             level >= 0 && row*100/rows < level ? RGB(0,255,0) : RGB(0,62,0));
     }
     if (level < 0) lstrcpyA(label,"--");
-    else if (memory) wsprintfA(label,"%lu K",sample.commitKB);
+    else if (memory) { formatSize(label,sample.commitKB); lstrcatA(label," K"); }
     else wsprintfA(label,"%d%%",sample.cpu);
     old = (HFONT)SelectObject(dc,meterFont);
     SetTextColor(dc,RGB(0,255,0));
@@ -317,12 +242,12 @@ static void meter(HDC dc, int x, int y, int w, int h, int memory)
     SetTextColor(dc,GetSysColor(COLOR_BTNTEXT));
 }
 
-static void numberRow(HDC dc, int x, int y, int w, const char *label, DWORD n, int valid)
+static void numberRow(HDC dc, int x, int y, int w, const char *label, NP_SIZE n, int valid)
 {
     char buffer[40];
     RECT r;
     text(dc,x,y,label);
-    if (valid) wsprintfA(buffer,"%lu",n);
+    if (valid) formatSize(buffer,n);
     else lstrcpyA(buffer,"--");
     SetRect(&r,x,y,x+w,y+20);
     DrawTextA(dc,buffer,-1,&r,DT_RIGHT|DT_SINGLELINE);
@@ -331,7 +256,7 @@ static void numberRow(HDC dc, int x, int y, int w, const char *label, DWORD n, i
 static void paintContents(HDC dc, int w, int h)
 {
     int gap, meterWidth, graphX, graphWidth, rowH, lowerY, columnWidth, boxH;
-    DWORD used;
+    NP_SIZE used;
     char buffer[180];
     RECT status;
     HFONT old;
@@ -386,7 +311,7 @@ static void paintContents(HDC dc, int w, int h)
 
 static void paintFrame(HDC dc, int w, int h)
 {
-    char buffer[200], cpu[16];
+    char buffer[200], cpu[16], commit[24], limit[24];
     HFONT old;
     RECT r;
     rect(dc,0,0,w,h,GetSysColor(COLOR_BTNFACE));
@@ -403,8 +328,9 @@ static void paintFrame(HDC dc, int w, int h)
     else if (paused) lstrcpyA(buffer,"Paused - F5 refreshes the list; Space on the background resumes");
     else {
         if(sample.cpu<0) lstrcpyA(cpu,"--"); else wsprintfA(cpu,"%d%%",sample.cpu);
-        if(sample.memoryValid) wsprintfA(buffer,"Processes: %lu   |   CPU: %s   |   Commit: %lu K / %lu K",
-            sample.processes,cpu,sample.commitKB,sample.limitKB);
+        formatSize(commit,sample.commitKB); formatSize(limit,sample.limitKB);
+        if(sample.memoryValid) wsprintfA(buffer,"Processes: %lu   |   CPU: %s   |   Commit: %s K / %s K",
+            sample.processes,cpu,commit,limit);
         else wsprintfA(buffer,"Processes: %lu   |   CPU: %s   |   Memory unavailable",sample.processes,cpu);
     }
     SetRect(&r,7,h-21,w-7,h);
@@ -414,23 +340,31 @@ static void paintFrame(HDC dc, int w, int h)
 
 static void copyDiagnostics(HWND hwnd)
 {
-    char buffer[1200];
+    char buffer[1600], values[7][24];
+    int i;
+    NP_SIZE memoryValues[7];
     HGLOBAL block;
     char *destination;
     DWORD length;
+    memoryValues[0]=sample.totalKB; memoryValues[1]=sample.availableKB;
+    memoryValues[2]=sample.commitKB; memoryValues[3]=sample.limitKB;
+    memoryValues[4]=sample.peakKB; memoryValues[5]=sample.pagedKB;
+    memoryValues[6]=sample.nonpagedKB;
+    for (i=0;i<7;++i) formatSize(values[i],memoryValues[i]);
     wsprintfA(buffer,
-        "NTPERF31 R3 (x86)\r\nWindows version: %lu.%lu build %lu\r\n"
+        "NTPERF R4 (%s)\r\nWindows version: %lu.%lu build %lu\r\n"
         "Processors: %lu; page size: %lu\r\n"
-        "Native query status: CPU=%08lX Performance=%08lX Processes=%08lX Handles=%08lX\r\n"
+        "Sampling status: CPU=%08lX Performance=%08lX Processes=%08lX Handles=%08lX\r\n"
+        "Process query=%08lX (Processes above includes decoding); memory Win32 error=%lu\r\n"
         "CPU=%d%% Kernel=%d%% MemoryValid=%d TotalsValid=%d HandlesValid=%d\r\n"
-        "Physical=%luK Available=%luK Commit=%luK Limit=%luK Peak=%luK\r\n"
-        "Paged pool=%luK Nonpaged pool=%luK Processes=%lu Threads=%lu Handles=%lu\r\n",
-        version&255,(version>>8)&255,(version>>16)&65535,
+        "Physical=%sK Available=%sK Commit=%sK Limit=%sK Peak=%sK\r\n"
+        "Paged pool=%sK Nonpaged pool=%sK Processes=%lu Threads=%lu Handles=%lu\r\n",
+        backendName(),version&255,(version>>8)&255,(version>>16)&65535,
         sysInfo.dwNumberOfProcessors,sysInfo.dwPageSize,
         (DWORD)sample.cpuStatus,(DWORD)sample.perfStatus,(DWORD)sample.processStatus,(DWORD)sample.handleStatus,
+        (DWORD)sample.processQueryStatus,sample.memoryError,
         sample.cpu,sample.kernel,sample.memoryValid,sample.totalsValid,sample.handlesValid,
-        sample.totalKB,sample.availableKB,sample.commitKB,sample.limitKB,sample.peakKB,
-        sample.pagedKB,sample.nonpagedKB,sample.processes,sample.threads,sample.handles);
+        values[0],values[1],values[2],values[3],values[4],values[5],values[6],sample.processes,sample.threads,sample.handles);
     length = (DWORD)lstrlenA(buffer)+1;
     block = GlobalAlloc(GMEM_MOVEABLE,length);
     if (!block) return;
@@ -511,7 +445,7 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         } else if (command == ID_REFRESH) takeSample();
         else if (command == ID_COPY) copyDiagnostics(hwnd);
         else if (command == ID_ABOUT) MessageBoxA(hwnd,
-            "NTPERF31 R3\nNT 4-style performance graphs for Windows NT 3.1.\n\n"
+            "NTPERF R4\nNT 4-style performance graphs for NT 3.1 and Win64.\n\n"
             "Green: total CPU / committed memory.\nRed (optional): busy kernel CPU.\n"
             "Memory history is scaled to the current commit limit.\n\n"
             "F5: sample now   Space: pause/resume\n"
@@ -576,10 +510,10 @@ static HMENU createMenu(void)
     AppendMenuA(view,MF_STRING,ID_KERNEL,"Show &kernel times");
     AppendMenuA(help,MF_STRING,ID_COPY,"&Copy diagnostics");
     AppendMenuA(help,MF_STRING,ID_ABOUT,"&About NTPERF31");
-    AppendMenuA(menu,MF_POPUP,(UINT)file,"&File");
-    AppendMenuA(menu,MF_POPUP,(UINT)options,"&Options");
-    AppendMenuA(menu,MF_POPUP,(UINT)view,"&View");
-    AppendMenuA(menu,MF_POPUP,(UINT)help,"&Help");
+    AppendMenuA(menu,MF_POPUP,(WPARAM)file,"&File");
+    AppendMenuA(menu,MF_POPUP,(WPARAM)options,"&Options");
+    AppendMenuA(menu,MF_POPUP,(WPARAM)view,"&View");
+    AppendMenuA(menu,MF_POPUP,(WPARAM)help,"&Help");
     return menu;
 }
 
@@ -587,17 +521,11 @@ static void runApp(void)
 {
     WNDCLASSA wc;
     MSG msg;
-    QUERY_CAST convert;
-    HMODULE ntdll;
     HDC dc;
     int dpi, result;
     RECT bounds;
     instance = GetModuleHandleA(NULL);
-    version = GetVersion();
-    ntdll = GetModuleHandleA("ntdll.dll");
-    convert.generic = ntdll ? GetProcAddress(ntdll,"NtQuerySystemInformation") : NULL;
-    query = convert.query;
-    if (!query) {
+    if (!backendInit(&version)) {
         MessageBoxA(NULL,"This program requires Windows NT and NtQuerySystemInformation.","NTPERF31",MB_OK|MB_ICONSTOP);
         ExitProcess(1);
     }
@@ -622,7 +550,7 @@ static void runApp(void)
     if (!RegisterClassA(&wc)) ExitProcess(2);
     SetRect(&bounds,0,0,620,434);
     AdjustWindowRect(&bounds,WS_OVERLAPPEDWINDOW,TRUE);
-    mainWindow = CreateWindowA(wc.lpszClassName,"NT Performance - Windows NT 3.1",
+    mainWindow = CreateWindowA(wc.lpszClassName,APP_TITLE,
         WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,
         bounds.right-bounds.left,bounds.bottom-bounds.top,
         NULL,createMenu(),instance,NULL);
@@ -646,7 +574,7 @@ static void runApp(void)
         DispatchMessageA(&msg);
     }
     if (processRows) GlobalFree((HGLOBAL)processRows);
-    if (queryBuffer) GlobalFree((HGLOBAL)queryBuffer);
+    backendShutdown();
     if (uiFont) DeleteObject(uiFont);
     if (meterFont) DeleteObject(meterFont);
     ExitProcess(result < 0 ? 4 : 0);

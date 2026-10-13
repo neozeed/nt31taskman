@@ -1,5 +1,5 @@
 /* Empty, DWORD-aligned dialog template; controls use only USER32. */
-static BOOL CALLBACK runDialogProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
+static NP_DLGRESULT CALLBACK runDialogProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
 {
     HWND control;
     RECT owner, bounds;

@@ -11,6 +11,7 @@ typedef struct {
 } CPUINFO;
 typedef char CHECK_CPUINFO[(sizeof(CPUINFO) == 48) ? 1 : -1];
 
+#ifndef NTPERF_BACKEND
 static double timeDelta(TIME64 now, TIME64 old)
 {
     NP_U32 low, high;
@@ -50,4 +51,5 @@ static void cpuPercentages(const CPUINFO *now, const CPUINFO *old,
     *busy = percentage(kernel + user - idle, total);
     *busyKernel = percentage(kernel - idle, total);
 }
+#endif /* arithmetic used by UI/tests */
 #endif

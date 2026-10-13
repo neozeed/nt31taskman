@@ -1,25 +1,26 @@
-NTPERF31 R3 - build and validation
+NTPERF R4 - split NT 3.1 / Win64 backends
+Baseline: Git main 100258d (R3 feature set), retrieved 2026-10-13.
+Both cross-builds: GCC 13, strict C89, -Wall -Wextra -Werror, no CRT.
 
-Target: released Windows NT 3.1 x86.
-Baseline source: neozeed/nt31taskman main, commit cadccb9d152b040ecaf2f23874c119ac8fe079f1.
+PASS: 64-bit rollover/reset, busy vs idle/kernel, SMP normalization, zero delta, clamp
+PASS: NT 3.1 offsets, pointer bounds, truncated/invalid records, empty names, PID reuse identity
+PASS: x64 record chain, high pointers, 5 TiB VM, 64-bit formatting, malformed records, PID identity
+PASS: x64 SDK layout assertions (header, name, PID, times, VM and working set).
+PASS: NTPERF31.EXE pei-i386, OS/subsystem 3.10, DLLs GDI32.dll, KERNEL32.dll, USER32.dll.
+NTPERF31.EXE: 57587 bytes; SHA256 1992f5e6a33ea95431d735dabd0c73d7ba63bfc33d93fe6e7b437798dcb139a3
+PASS: NTPERF64.EXE pei-x86-64, OS/subsystem 6.1, DLLs GDI32.dll, KERNEL32.dll, PSAPI.DLL, USER32.dll.
+NTPERF64.EXE: 56239 bytes; SHA256 74627ed95bce8aa95a892172a609c4b1c14d43ccb7a2ad2985ad62fabffe1738
 
-PASS: strict C89 cross-build, GCC 13.2.0, warnings treated as errors.
-PASS: portable counter tests, including eight independent CPU loads and aggregate.
-PASS: portable process decoder/identity tests.
-PASS: PE32/i386; OS and GUI subsystem versions 3.10.
-PASS: only GDI32, KERNEL32, USER32 direct DLL dependencies; no CRT.
-Instruction target: i386, SSE disabled. Native counters resolved from NTDLL.
+Runtime validation is pending. No Windows, Wine, or NT VM was available here.
+The MinGW layout test is compile-only, and portable decoder tests use synthetic
+records. Neither is a substitute for running on the target OS.
+Legacy MS compiler build files updated, not tested with that compiler.
+Win64 target: Windows 7+ x64; one CPU group (up to 64 logical processors).
+Multi-group CPU sampling is explicitly unavailable; other views still work.
 
-R1/R2 views were user-tested on NT 3.1 SP3 in QEMU.
-R3 UI, Run dialog, and real multiprocessor execution have NOT been runtime-tested
-here. No NT VM is available in this build environment.
-
-Suggested NT 3.1 checks:
-1. Run on UP and SMP; load one CPU and compare the individual/combined histories.
-2. Toggle kernel traces, graph mode, pause/resume, and sample interval.
-3. Resize to minimum and back on both tabs; confirm all controls remain usable.
-4. File > Run: notepad.exe, a quoted path with arguments, an environment variable,
-   an invalid executable, Enter, Escape, Cancel, and repeated launches.
-
-Executable bytes: 55334
-SHA256: 90d41406fa502ccd80e6089ae9d7fb595e02641f5685074460a15fdf2151f951
+Suggested live checks:
+- Both targets: process list, sorting, per-CPU history, resize, Run dialog.
+- Win64: compare memory and process values, including a large VM reservation.
+- Confirm diagnostics say Win64 and both process status fields succeed.
+- End a disposable Notepad instance; verify confirmation and list refresh.
+- NT 3.1: regress original sampling and process enumeration after backend split.

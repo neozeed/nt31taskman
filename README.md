@@ -24,6 +24,54 @@ then remove this comment wrapper to display them.
 
 -->
 
+## R4: the same grey window, now in Win64
+
+Two executables, one interface:
+
+- **NTPERF31.EXE**: released Windows NT 3.1, x86. Original native layouts and only KERNEL32/USER32/GDI32 imports.
+- **NTPERF64.EXE**: Windows 7 or later, x64 target. Modern native process records, 64-bit memory counters, and PSAPI GetPerformanceInfo for physical/commit/pool memory and handle totals. Also enumerates 32-bit processes.
+
+R3's per-processor graphs, smaller resizing, and Run dialog are retained.
+Both GNU builds use a custom entry point without a C runtime DLL dependency.
+The Win64 target uses OS/subsystem version 6.1 and enables ASLR/DEP; the NT 3.1 target retains version 3.10.
+
+### Build
+
+```sh
+make -f Makefile.cross TARGET=nt31
+make -f Makefile.cross TARGET=win64
+```
+
+The equivalent direct Win64 command is:
+
+```sh
+x86_64-w64-mingw32-gcc -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector -nostdlib -Wl,--entry,WinMainCRTStartup -Wl,--subsystem,windows:6.1 -Wl,--major-os-version,6,--minor-os-version,1 -Wl,--dynamicbase,--nxcompat -Wl,--no-insert-timestamp -o NTPERF64.EXE ntperf31.c win64.c -luser32 -lgdi32 -lkernel32 -lpsapi
+```
+
+**Compile and link the selected backend as well as ntperf31.c.** Select `nt31.c` for the x86 build or `win64.c` for the x64 build. Do not link both. The original Microsoft build files have also been updated to include `nt31.obj`, but that toolchain was not available for validation.
+
+### Backend boundary
+
+`backend.h` defines the normalized sample/process interface. `nt31.c` and `win64.c` own OS queries, process decoding, names, and memory conversion. `native-query.inc` shares bounded query-buffer allocation and CPU sampling between the two translation units. No pointers into a native query buffer escape to the UI. Process identity remains PID plus creation time; End Process still verifies the creation time on the opened handle before confirmation and termination.
+
+Memory values use 64-bit integers in Win64, including stored history and decimal formatting. The process VM Size column retains its original meaning: total virtual size, not private commit. CPU percentages use elapsed user/kernel time, so they need not match a modern Task Manager's frequency-adjusted CPU display.
+
+Win64 currently supports CPU metrics for **one processor group, up to 64 logical processors**. On a machine with multiple groups, CPU metrics are marked unavailable instead of reporting a misleading partial total; processes and memory remain available. Dense per-CPU graphs may need a taller window to show their number labels.
+
+Diagnostics identify the backend, use RtlGetVersion on Win64, and report the raw process-query status separately from the decoded snapshot status. A successful query followed by a decoder failure is now distinguishable. Win64 memory failures include the Win32 error code from GetPerformanceInfo.
+
+### Verification
+
+Both targets compile with warnings treated as errors. Portable tests cover the NT 3.1 decoder, x64 record chains and pointers above 4 GB, virtual sizes above 4 TiB, decimal formatting through the full 64-bit range, malformed input, PID reuse, and independent CPU loads. A separate compile-only test checks the x64 offsets against the MinGW SDK layout. PE headers and imported DLLs are checked.
+
+**R4 has not yet been run on Windows or NT 3.1 in this build environment.** First live checks: populated process list and sorting; values compared with another monitor; Run/Cancel/invalid commands; and End Process on a disposable program. Retest the original NT 3.1 binary after the split.
+
+API/layout references:
+- https://learn.microsoft.com/en-us/windows/win32/api/psapi/nf-psapi-getperformanceinfo
+- https://learn.microsoft.com/en-us/windows/win32/api/psapi/ns-psapi-performance_information
+- https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntquerysysteminformation
+- https://github.com/winsiderss/systeminformer/blob/master/phnt/include/ntexapi.h
+
 ## R3: the people demand more graphs
 
 - **One history graph per processor**, selected automatically on multiprocessor machines. Eight CPUs get eight independent traces, numbered 0–7. Use **View → One graph per CPU** to toggle the combined view; switching keeps the history. The CPU meter always shows overall usage.

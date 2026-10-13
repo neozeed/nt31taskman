@@ -1,57 +1,24 @@
-/* Released NT 3.1 x86 SystemProcessInformation decoder. No pointer dereference. */
+/* Normalized process data shared by both backends and the UI. */
 #ifndef NTPERF_PROCESS_H
 #define NTPERF_PROCESS_H
 #include "counters.h"
+#include "numbers.h"
 typedef struct {
-    NP_U32 pid, threads, workingKB, virtualKB, nameOffset, nameBytes;
+    NP_U32 pid, threads, nameOffset, nameBytes;
+    NP_SIZE workingKB, virtualKB;
+    char name[260];
     TIME64 created, user, kernel;
 } PROCDATA;
-static NP_U32 npWord(const unsigned char *p, NP_U32 at)
-{
-    return (NP_U32)p[at] | ((NP_U32)p[at+1]<<8) |
-           ((NP_U32)p[at+2]<<16) | ((NP_U32)p[at+3]<<24);
-}
-static TIME64 npTime(const unsigned char *p, NP_U32 at)
-{
-    TIME64 t;
-    t.low=npWord(p,at); t.high=npWord(p,at+4);
-    return t;
-}
+#ifndef NTPERF_BACKEND
 static int sameProcess(const PROCDATA *a, const PROCDATA *b)
 {
     return a->pid==b->pid && a->created.low==b->created.low &&
            a->created.high==b->created.high;
-}
-static int decodeProcess(const unsigned char *buffer, NP_U32 length,
-                         NP_U32 base, NP_U32 pos, PROCDATA *p, NP_U32 *next)
-{
-    const unsigned char *r;
-    NP_U32 bytes, maximum, address;
-    if (pos > length || length-pos < 0x88) return 0;
-    r=buffer+pos;
-    *next=npWord(r,0);
-    if (*next && (*next<0x88 || (*next&3) || *next>length-pos)) return 0;
-    bytes=(NP_U32)r[0x38] | ((NP_U32)r[0x39]<<8);
-    maximum=(NP_U32)r[0x3a] | ((NP_U32)r[0x3b]<<8);
-    address=npWord(r,0x3c);
-    p->nameOffset=0; p->nameBytes=bytes;
-    if (bytes) {
-        if ((bytes&1) || (address&1) || bytes>maximum || address<base) return 0;
-        p->nameOffset=address-base;
-        if (p->nameOffset>length || bytes>length-p->nameOffset) return 0;
-    }
-    p->threads=npWord(r,4);
-    p->created=npTime(r,0x20);
-    p->user=npTime(r,0x28);
-    p->kernel=npTime(r,0x30);
-    p->pid=npWord(r,0x44);
-    p->workingKB=npWord(r,0x68)/1024;
-    p->virtualKB=npWord(r,0x5c)/1024;
-    return 1;
 }
 static double processTime(const PROCDATA *p)
 {
     return ((double)p->user.high+(double)p->kernel.high)*4294967296.0 +
            (double)p->user.low+(double)p->kernel.low;
 }
+#endif
 #endif
