@@ -255,17 +255,17 @@ static void numberRow(HDC dc, int x, int y, int w, const char *label, NP_SIZE n,
 }
 
 /* NT 3.1 SYSTEM_INFO has no wProcessorArchitecture; dwProcessorType is portable. */
-static const char *cpuArch(void)
+static const char *cpuFormat(DWORD type)
 {
-    switch (sysInfo.dwProcessorType) {
-    case 386: return "386";
-    case 486: return "486";
-    case 586: return "586";
-    case 4000: return "MIPS";
-    case 21064: return "Alpha";
+    switch (type) {
+    case 386: case 486: case 586: case 686: case 860: return "i%lu";
+    case 2000: case 3000: case 4000: return "MIPS R%lu";
+    case 601: case 603: case 604: case 620: return "PowerPC %lu";
+    case 2200: return "IA64";
     case 8664: return "x64";
     }
-    return "Unknown";
+    if (type >= 21000 && type < 22000) return "Alpha %lu";
+    return "Unknown %lu";
 }
 
 static void paintContents(HDC dc, int w, int h)
@@ -539,13 +539,15 @@ static void runApp(void)
     HDC dc;
     int dpi, result;
     RECT bounds;
+    char name[24];
     instance = GetModuleHandleA(NULL);
     if (!backendInit(&version)) {
         MessageBoxA(NULL,"This program requires Windows NT and NtQuerySystemInformation.","NTPERF31",MB_OK|MB_ICONSTOP);
         ExitProcess(1);
     }
     GetSystemInfo(&sysInfo);
-    wsprintfA(cpuText,"%lu %s CPU%s",sysInfo.dwNumberOfProcessors,cpuArch(),
+    wsprintfA(name,cpuFormat(sysInfo.dwProcessorType),sysInfo.dwProcessorType);
+    wsprintfA(cpuText,"%lu %s CPU%s",sysInfo.dwNumberOfProcessors,name,
         sysInfo.dwNumberOfProcessors>1 ? "s" : "");
     perCpu = sysInfo.dwNumberOfProcessors > 1;
     dc = GetDC(NULL);
