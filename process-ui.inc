@@ -71,7 +71,8 @@ static int rowChanged(const PROCESSROW *a, const PROCESSROW *b)
 {
     return !sameProcess(&a->data,&b->data) || a->cpu!=b->cpu ||
         a->data.threads!=b->data.threads || a->data.workingKB!=b->data.workingKB ||
-        a->data.virtualKB!=b->data.virtualKB || cpuSeconds(&a->data)!=cpuSeconds(&b->data);
+        a->data.virtualKB!=b->data.virtualKB || cpuSeconds(&a->data)!=cpuSeconds(&b->data) ||
+        lstrcmpA(a->name,b->name);
 }
 /* No reset: it erased the whole list every tick. Add/delete erase only their rows;
  * UpdateWindow flushes that so changed rows repaint without erase. */
