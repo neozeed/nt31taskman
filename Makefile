@@ -26,3 +26,8 @@ testc.exe: TEST_COU.obj
 
 testp.exe: TEST_PRO.obj
     $(link) $(conflags) -out:testc.exe TEST_PRO.obj $(conlibs)
+
+clean:
+    -del *.obj
+    -del taskman.exe
+    -del testc.exe

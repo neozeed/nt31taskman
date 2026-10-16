@@ -25,6 +25,7 @@ static HINSTANCE instance;
 static HWND mainWindow;
 static HFONT uiFont, meterFont;
 static SYSTEM_INFO sysInfo;
+static char cpuText[40];
 static SAMPLE sample;
 static CPUINFO previous[CPU_MAX];
 static int previousValid, previousCount;
@@ -253,6 +254,20 @@ static void numberRow(HDC dc, int x, int y, int w, const char *label, NP_SIZE n,
     DrawTextA(dc,buffer,-1,&r,DT_RIGHT|DT_SINGLELINE);
 }
 
+/* NT 3.1 SYSTEM_INFO has no wProcessorArchitecture; dwProcessorType is portable. */
+static const char *cpuFormat(DWORD type)
+{
+    switch (type) {
+    case 386: case 486: case 586: case 686: case 860: return "i%lu";
+    case 2000: case 3000: case 4000: return "MIPS R%lu";
+    case 601: case 603: case 604: case 620: return "PowerPC %lu";
+    case 2200: return "IA64";
+    case 8664: return "x64";
+    }
+    if (type >= 21000 && type < 22000) return "Alpha %lu";
+    return "Unknown %lu";
+}
+
 static void paintContents(HDC dc, int w, int h)
 {
     int gap, meterWidth, graphX, graphWidth, rowH, lowerY, columnWidth, boxH;
@@ -302,8 +317,8 @@ static void paintContents(HDC dc, int w, int h)
     if (sample.cpuStatus < 0 || sample.perfStatus < 0)
         lstrcpyA(buffer,"Statistics unavailable - Help > Copy diagnostics");
     else if (paused) lstrcpyA(buffer,"Paused - View > Paused to resume");
-    else wsprintfA(buffer,"%lu CPU(s)   |   %lu ms / sample   |   History: %lu samples",
-        sysInfo.dwNumberOfProcessors,(DWORD)interval,(DWORD)HISTORY);
+    else wsprintfA(buffer,"%s   |   %lu ms / sample   |   History: %lu samples",
+        cpuText,(DWORD)interval,(DWORD)HISTORY);
     SetRect(&status,7,h-20,w-7,h);
     DrawTextA(dc,buffer,-1,&status,DT_LEFT|DT_SINGLELINE|DT_VCENTER);
     SelectObject(dc,old);
@@ -329,9 +344,9 @@ static void paintFrame(HDC dc, int w, int h)
     else {
         if(sample.cpu<0) lstrcpyA(cpu,"--"); else wsprintfA(cpu,"%d%%",sample.cpu);
         formatSize(commit,sample.commitKB); formatSize(limit,sample.limitKB);
-        if(sample.memoryValid) wsprintfA(buffer,"Processes: %lu   |   CPU: %s   |   Commit: %s K / %s K",
-            sample.processes,cpu,commit,limit);
-        else wsprintfA(buffer,"Processes: %lu   |   CPU: %s   |   Memory unavailable",sample.processes,cpu);
+        if(sample.memoryValid) wsprintfA(buffer,"%s   |   Processes: %lu   |   CPU: %s   |   Commit: %s K / %s K",
+            cpuText,sample.processes,cpu,commit,limit);
+        else wsprintfA(buffer,"%s   |   Processes: %lu   |   CPU: %s   |   Memory unavailable",cpuText,sample.processes,cpu);
     }
     SetRect(&r,7,h-21,w-7,h);
     DrawTextA(dc,buffer,-1,&r,DT_LEFT|DT_SINGLELINE|DT_VCENTER);
@@ -524,12 +539,16 @@ static void runApp(void)
     HDC dc;
     int dpi, result;
     RECT bounds;
+    char name[24];
     instance = GetModuleHandleA(NULL);
     if (!backendInit(&version)) {
         MessageBoxA(NULL,"This program requires Windows NT and NtQuerySystemInformation.","NTPERF31",MB_OK|MB_ICONSTOP);
         ExitProcess(1);
     }
     GetSystemInfo(&sysInfo);
+    wsprintfA(name,cpuFormat(sysInfo.dwProcessorType),sysInfo.dwProcessorType);
+    wsprintfA(cpuText,"%lu %s CPU%s",sysInfo.dwNumberOfProcessors,name,
+        sysInfo.dwNumberOfProcessors>1 ? "s" : "");
     perCpu = sysInfo.dwNumberOfProcessors > 1;
     dc = GetDC(NULL);
     dpi = GetDeviceCaps(dc,LOGPIXELSY);
