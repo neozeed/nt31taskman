@@ -63,38 +63,56 @@ static void sortRows(void)
         processRows[j]=value;
     }
 }
-static void populateList(const PROCDATA *selected, int top)
+static DWORD cpuSeconds(const PROCDATA *p)
+{
+    return (DWORD)(processTime(p)/10000000.0);
+}
+static int rowChanged(const PROCESSROW *a, const PROCESSROW *b)
+{
+    return !sameProcess(&a->data,&b->data) || a->cpu!=b->cpu ||
+        a->data.threads!=b->data.threads || a->data.workingKB!=b->data.workingKB ||
+        a->data.virtualKB!=b->data.virtualKB || cpuSeconds(&a->data)!=cpuSeconds(&b->data) ||
+        lstrcmpA(a->name,b->name);
+}
+/* No reset: it erased the whole list every tick. Add/delete erase only their rows;
+ * UpdateWindow flushes that so changed rows repaint without erase. */
+static void populateList(const PROCDATA *selected, const PROCESSROW *old, DWORD oldCount)
 {
     DWORD i;
-    int selection;
+    int items, selection, top;
+    RECT r;
     if (!processList) return;
+    items=(int)SendMessageA(processList,LB_GETCOUNT,0,0);
+    for (;items<(int)processCount;++items)
+        if (SendMessageA(processList,LB_ADDSTRING,0,0)<0) break;
+    while (items>(int)processCount) SendMessageA(processList,LB_DELETESTRING,(WPARAM)--items,0);
     selection=-1;
-    SendMessageA(processList,WM_SETREDRAW,FALSE,0);
-    SendMessageA(processList,LB_RESETCONTENT,0,0);
-    for (i=0;i<processCount;++i) {
-        SendMessageA(processList,LB_ADDSTRING,0,0);
-        if (selected && sameProcess(selected,&processRows[i].data)) selection=(int)i;
+    for (i=0;selected && i<processCount;++i)
+        if (sameProcess(selected,&processRows[i].data)) { selection=(int)i; break; }
+    if ((int)SendMessageA(processList,LB_GETCURSEL,0,0)!=selection) {
+        top=(int)SendMessageA(processList,LB_GETTOPINDEX,0,0);
+        SendMessageA(processList,LB_SETCURSEL,(WPARAM)selection,0);
+        SendMessageA(processList,LB_SETTOPINDEX,(WPARAM)top,0);
     }
-    SendMessageA(processList,LB_SETCURSEL,(WPARAM)selection,0);
-    if (top>=(int)processCount) top=processCount ? (int)processCount-1 : 0;
-    SendMessageA(processList,LB_SETTOPINDEX,(WPARAM)top,0);
-    SendMessageA(processList,WM_SETREDRAW,TRUE,0);
-    ShowWindow(processList,activeTab==0?SW_SHOW:SW_HIDE);
-    InvalidateRect(processList,NULL,FALSE);
+    UpdateWindow(processList);
+    for (i=0;i<processCount;++i) {
+        if (i<oldCount && !rowChanged(&processRows[i],&old[i])) continue;
+        if (SendMessageA(processList,LB_GETITEMRECT,(WPARAM)i,(LPARAM)&r)!=LB_ERR)
+            InvalidateRect(processList,&r,FALSE);
+    }
     updateProcessControls();
 }
 static void collectProcesses(const PROCDATA *data, DWORD count)
 {
-    DWORD i, j, now, elapsed;
+    DWORD i, j, now, elapsed, oldCount;
     PROCESSROW *rows, *oldRows;
     PROCDATA selected;
-    int selection, haveSelection, top;
+    int selection, haveSelection;
     double userDelta,kernelDelta;
     rows=(PROCESSROW *)GlobalAlloc(GMEM_FIXED,count*sizeof(PROCESSROW));
     if (!rows) goto malformed;
     now=GetTickCount(); elapsed=now-processTick;
     selection=processList ? (int)SendMessageA(processList,LB_GETCURSEL,0,0) : -1;
-    top=processList ? (int)SendMessageA(processList,LB_GETTOPINDEX,0,0) : 0;
     haveSelection=selection>=0 && (DWORD)selection<processCount;
     if (haveSelection) selected=processRows[selection].data;
     sample.threads=0;
@@ -119,11 +137,12 @@ static void collectProcesses(const PROCDATA *data, DWORD count)
         }
         sample.threads+=rows[i].data.threads;
     }
-    oldRows=processRows; processRows=rows; processCount=count;
+    oldRows=processRows; oldCount=processCount;
+    processRows=rows; processCount=count;
     processTick=now; processBaseline=1;
     sample.processes=count; sample.totalsValid=1;
     sortRows();
-    populateList(haveSelection?&selected:NULL,top);
+    populateList(haveSelection?&selected:NULL,oldRows,oldCount);
     if (oldRows) GlobalFree((HGLOBAL)oldRows);
     return;
 malformed:
@@ -186,7 +205,7 @@ static void drawProcessItem(const DRAWITEMSTRUCT *d)
     old=(HFONT)SelectObject(d->hDC,uiFont);
     SetBkMode(d->hDC,TRANSPARENT);
     x=d->rcItem.left;
-    seconds=(DWORD)(processTime(&p->data)/10000000.0);
+    seconds=cpuSeconds(&p->data);
     for(i=0;i<COLUMNS;++i) {
         if(i==0) lstrcpyA(buffer,p->name);
         if(i==1) wsprintfA(buffer,"%lu",(DWORD)p->data.pid);
@@ -222,15 +241,14 @@ static void drawTab(const DRAWITEMSTRUCT *d)
 }
 static void sortByColumn(int column)
 {
-    int selection,top,valid;
+    int selection,valid;
     PROCDATA selected;
     selection=(int)SendMessageA(processList,LB_GETCURSEL,0,0);
-    top=(int)SendMessageA(processList,LB_GETTOPINDEX,0,0);
     valid=selection>=0 && (DWORD)selection<processCount;
     if(valid) selected=processRows[selection].data;
     if(sortColumn==column) sortDescending=!sortDescending;
     else { sortColumn=column; sortDescending=column>=2; }
-    sortRows(); populateList(valid?&selected:NULL,top);
+    sortRows(); populateList(valid?&selected:NULL,NULL,0);
 }
 static void endSelectedProcess(void)
 {
