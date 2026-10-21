@@ -12,7 +12,7 @@ int backendInit(DWORD *version)
     *version=GetVersion();
     return initNative();
 }
-const char *backendName(void) { return "NT 3.x x86"; }
+const char *backendName(void) { return "NT 3.x"; }
 void backendReadMemory(SAMPLE *s, const SYSTEM_INFO *info)
 {
     DWORD perf[78], cache[3];
