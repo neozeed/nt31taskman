@@ -28,11 +28,15 @@ then remove this comment wrapper to display them.
 
 Targets NT 3.5 as well as NT 3.1, whose native structures are identical. Adds an **Applications** tab (Switch To, End Task), **Process → Set Priority** (also on right-click), optional columns under **View → Process Columns**, per-process handle counts and a **File Cache** row, which falls back to **Used** when the system does not report it.
 
+## Replace the Task List
+
+**Options → Replace Task List** (NT 3.5 and later, administrators only) makes Program Manager start NTPERF3X hidden at logon instead of its Task List: Ctrl+Esc or a desktop double-click opens the Applications tab, and closing only hides the window. Uncheck it to get the Task List back at the next logon; NT 3.1's Program Manager has no such setting.
+
 ## R4: the same grey window, now in Win64
 
 Two executables, one interface:
 
-- **NTPERF3X.EXE**: Windows NT 3.1 and 3.5, x86. Original native layouts and only KERNEL32/USER32/GDI32 imports.
+- **NTPERF3X.EXE**: Windows NT 3.1 and 3.5, x86. Original native layouts and only KERNEL32/USER32/GDI32/ADVAPI32 imports.
 - **NTPERF64.EXE**: Windows 7 or later, x64 target. Modern native process records, 64-bit memory counters, and PSAPI GetPerformanceInfo for physical/commit/pool memory and handle totals. Also enumerates 32-bit processes.
 
 R3's per-processor graphs, smaller resizing, and Run dialog are retained.
@@ -195,6 +199,7 @@ The GNU build directly imports only:
 - `KERNEL32.DLL`
 - `USER32.DLL`
 - `GDI32.DLL`
+- `ADVAPI32.DLL`
 
 It resolves `NtQuerySystemInformation` dynamically from `NTDLL.DLL` to collect native statistics.
 

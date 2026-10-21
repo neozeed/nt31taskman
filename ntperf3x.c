@@ -18,6 +18,8 @@
 #define ID_ABOUT 109
 #define ID_RUN 110
 #define ID_PERCPU 111
+#define ID_TASKLIST 112
+#define WINDOW_CLASS "NTPerf3xWindow"
 #define BAD (-1)
 #include "backend.h"
 
@@ -37,7 +39,7 @@ static int memValid[HISTORY];
 static int nextSample, historyCount;
 static DWORD sampleSerial;
 static UINT interval = 1000;
-static int paused, topmost, showKernel;
+static int paused, topmost, showKernel, tasklistMode;
 static DWORD version;
 
 static void clearBytes(void *p, DWORD n)
@@ -414,6 +416,7 @@ static void updateMenu(HWND hwnd)
 }
 
 #include "run-ui.inc"
+#include "tasklist-ui.inc"
 
 static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp)
 {
@@ -433,8 +436,14 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         limits->ptMinTrackSize.y = area.bottom-area.top;
         return 0;
     case WM_SIZE: layoutProcessControls(); layoutAppControls(); InvalidateRect(hwnd,NULL,FALSE); return 0;
-    case WM_INITMENUPOPUP: updateProcessMenu(); break;
+    case WM_INITMENUPOPUP: updateProcessMenu(); updateTasklistMenu(); break;
     case WM_ENDTASKDONE: endTaskDone((BOOL)lp); return 0;
+    case WM_HOTKEY: showTasklist(1); return 0;
+    case WM_SHOWTASKLIST: showTasklist(0); return 0;
+    case WM_CLOSE:
+        if (!tasklistMode) break;
+        ShowWindow(hwnd,SW_HIDE);
+        return 0;
     case WM_MEASUREITEM:
         ((MEASUREITEMSTRUCT *)lp)->itemHeight=(UINT)rowHeight;
         return TRUE;
@@ -442,7 +451,7 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         if (((DRAWITEMSTRUCT *)lp)->CtlID==ID_LIST) drawProcessItem((DRAWITEMSTRUCT *)lp);
         else drawTab((DRAWITEMSTRUCT *)lp);
         return TRUE;
-    case WM_TIMER: if (!paused && !processBusy) takeSample(); return 0;
+    case WM_TIMER: if (!paused && !processBusy && IsWindowVisible(hwnd)) takeSample(); return 0;
     case WM_KEYDOWN:
         if (wp == VK_F5) takeSample();
         if (wp == VK_SPACE) SendMessageA(hwnd,WM_COMMAND,ID_PAUSE,0);
@@ -460,7 +469,9 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         else if (command > ID_SHOWCOLUMN && command < ID_SHOWCOLUMN+COLUMNS) toggleColumn(command-ID_SHOWCOLUMN);
         else if (command == ID_RUN) showRunDialog(hwnd);
         else if (command == ID_PERCPU) perCpu = !perCpu;
-        else if (command == ID_EXIT) DestroyWindow(hwnd);
+        else if (command == ID_EXIT) SendMessageA(hwnd,WM_CLOSE,0,0);
+        else if (command == IDCANCEL && tasklistMode) ShowWindow(hwnd,SW_HIDE);
+        else if (command == ID_TASKLIST) toggleTasklist(hwnd);
         else if (command == ID_TOP) {
             topmost = !topmost;
             SetWindowPos(hwnd,topmost?HWND_TOPMOST:HWND_NOTOPMOST,0,0,0,0,SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE);
@@ -530,6 +541,10 @@ static HMENU createMenu(void)
     AppendMenuA(file,MF_SEPARATOR,0,NULL);
     AppendMenuA(file,MF_STRING,ID_EXIT,"E&xit");
     AppendMenuA(options,MF_STRING,ID_TOP,"Always on &top");
+    if (LOBYTE(LOWORD(version))==3) {
+        AppendMenuA(options,MF_SEPARATOR,0,NULL);
+        AppendMenuA(options,MF_STRING|(tasklistSupported()?0:MF_GRAYED),ID_TASKLIST,"&Replace Task List");
+    }
     AppendMenuA(view,MF_STRING,ID_FAST,"&High speed (0.5 seconds)");
     AppendMenuA(view,MF_STRING|MF_CHECKED,ID_NORMAL,"&Normal speed (1 second)");
     AppendMenuA(view,MF_STRING,ID_SLOW,"&Low speed (2 seconds)");
@@ -565,6 +580,11 @@ static void runApp(void)
     int dpi, result;
     RECT bounds;
     char name[24];
+    HWND resident = FindWindowA(WINDOW_CLASS,NULL);
+    if (resident && !IsWindowVisible(resident)) {
+        PostMessageA(resident,WM_SHOWTASKLIST,0,0);
+        ExitProcess(0);
+    }
     instance = GetModuleHandleA(NULL);
     if (!backendInit(&version)) {
         MessageBoxA(NULL,"This program requires Windows NT and NtQuerySystemInformation.","NTPERF3X",MB_OK|MB_ICONSTOP);
@@ -590,7 +610,7 @@ static void runApp(void)
     wc.hInstance = instance;
     wc.hIcon = LoadIconA(NULL,IDI_APPLICATION);
     wc.hCursor = LoadCursorA(NULL,IDC_ARROW);
-    wc.lpszClassName = "NTPerf3xWindow";
+    wc.lpszClassName = WINDOW_CLASS;
     if (!RegisterClassA(&wc)) ExitProcess(2);
     SetRect(&bounds,0,0,620,434);
     AdjustWindowRect(&bounds,WS_OVERLAPPEDWINDOW,TRUE);
@@ -603,10 +623,12 @@ static void runApp(void)
     createProcessControls();
     createAppControls();
     takeSample();
-    ShowWindow(mainWindow,SW_SHOWNORMAL);
+    startTasklist();
+    if (!tasklistMode) ShowWindow(mainWindow,SW_SHOWNORMAL);
     UpdateWindow(mainWindow);
     SetTimer(mainWindow,1,interval,NULL);
     while ((result=GetMessageA(&msg,NULL,0,0)) > 0) {
+        if (msg.message==WM_SYSCOMMAND && msg.wParam==SC_TASKLIST && !msg.hwnd) { showTasklist(1); continue; }
         if (msg.message==WM_KEYDOWN && msg.wParam==VK_F5) { takeSample(); continue; }
         if (msg.message==WM_KEYDOWN && msg.wParam==VK_TAB && (GetKeyState(VK_CONTROL)&0x8000)) {
             setTab((activeTab+1)%TABS); continue;
