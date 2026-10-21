@@ -24,6 +24,10 @@ then remove this comment wrapper to display them.
 
 -->
 
+## Applications, priorities, more columns
+
+Targets NT 3.5 as well as NT 3.1, whose native structures are identical. Adds an **Applications** tab (Switch To, End Task), **Process → Set Priority** (also on right-click), optional columns under **View → Process Columns**, per-process handle counts and a **File Cache** row, which falls back to **Used** when the system does not report it.
+
 ## R4: the same grey window, now in Win64
 
 Two executables, one interface:
@@ -145,6 +149,9 @@ The supplied GNU-built executable requires no additional runtime DLLs.
 | Show busy kernel CPU time | **View → Show kernel times** |
 | Keep the window above other windows | **Options → Always on top** |
 | Terminate the selected process | **End Process**, or **Delete** with the list focused |
+| Change a process's priority | **Process → Set Priority**, or right-click it |
+| Choose process columns | **View → Process Columns** |
+| Close or activate an application | **Applications** tab: **End Task** / **Switch To**, or **Delete** / **Enter** |
 | Copy diagnostic information | **Help → Copy diagnostics** |
 
 Both pages continue collecting samples while you switch between them. Changing update speed clears graph history. The history axis represents samples; manually refreshing or pausing changes their spacing in real time.
@@ -177,7 +184,7 @@ A few labels deserve explanation before someone starts adding every column toget
 - **Kernel Pool Memory → Total** is paged pool plus nonpaged pool, not everything the kernel occupies.
 - **K** means KiB.
 
-The physical-memory panel uses **Used** in place of the reference Task Manager's File Cache row.
+The physical-memory panel shows **File Cache** (the system cache working set), or **Used** if the system does not report it.
 
 ## Under the bonnet
 
@@ -246,7 +253,7 @@ These cover counter rollover and reset, multi-CPU normalization, historical proc
 
 Both views have been demonstrated running on **NT 3.1 SP3 under QEMU**. Local compilation, counter/decoder tests, and PE/header/import checks also pass. The screenshots establish the display and enumeration results; they do not constitute exhaustive testing of termination, every menu action, or multiprocessor hardware.
 
-This is an NT 4-inspired utility written for NT 3.1, not a port of Microsoft's Task Manager source. There is no Applications page yet. The supplied executable is **x86 only**; MIPS, Alpha, early NT betas, and other Windows releases are not claimed as tested targets.
+This is an NT 4-inspired utility written for NT 3.1, not a port of Microsoft's Task Manager source. The supplied executable is **x86 only**; MIPS, Alpha, early NT betas, and other Windows releases are not claimed as tested targets.
 
 ## Reporting problems
 

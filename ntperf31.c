@@ -47,14 +47,15 @@ static void clearBytes(void *p, DWORD n)
     while (n--) *b++ = 0;
 }
 
+#include "apps-ui.inc"
 #include "process-ui.inc"
 
 static void sampleTotals(void)
 {
     PROCDATA *rows;
     DWORD count;
-    sample.totalsValid=0;
-    sample.processStatus=backendReadProcesses(&rows,&count,&sample.processQueryStatus);
+    sample.totalsValid=sample.handlesValid=0;
+    sample.processStatus=backendReadProcesses(&rows,&count,&sample.processQueryStatus,&sample.handleStatus);
     if (sample.processStatus>=0) {
         collectProcesses(rows,count);
         GlobalFree((HGLOBAL)rows);
@@ -88,6 +89,7 @@ static void takeSample(void)
 
     backendReadMemory(&sample,&sysInfo);
     sampleTotals();
+    if (activeTab == TAB_APPS) refreshApps();
     cpuHistory[nextSample] = sample.cpu;
     kernelHistory[nextSample] = sample.kernel;
     memHistory[nextSample] = sample.commitKB;
@@ -303,7 +305,8 @@ static void paintContents(HDC dc, int w, int h)
     used = sample.totalKB >= sample.availableKB ? sample.totalKB-sample.availableKB : 0;
     numberRow(dc,columnWidth+2*gap+10,lowerY+21,columnWidth-20,"Total",sample.totalKB,sample.memoryValid);
     numberRow(dc,columnWidth+2*gap+10,lowerY+38,columnWidth-20,"Available",sample.availableKB,sample.memoryValid);
-    numberRow(dc,columnWidth+2*gap+10,lowerY+55,columnWidth-20,"Used",used,sample.memoryValid);
+    if (sample.cacheValid) numberRow(dc,columnWidth+2*gap+10,lowerY+55,columnWidth-20,"File Cache",sample.cacheKB,1);
+    else numberRow(dc,columnWidth+2*gap+10,lowerY+55,columnWidth-20,"Used",used,sample.memoryValid);
     lowerY += boxH+7;
     group(dc,gap,lowerY,columnWidth,boxH,"Commit Charge (K)");
     numberRow(dc,gap+10,lowerY+21,columnWidth-20,"Total",sample.commitKB,sample.memoryValid);
@@ -330,7 +333,7 @@ static void paintFrame(HDC dc, int w, int h)
     HFONT old;
     RECT r;
     rect(dc,0,0,w,h,GetSysColor(COLOR_BTNFACE));
-    if (activeTab==1) {
+    if (activeTab==TAB_PERFORMANCE) {
         SetViewportOrgEx(dc,0,34,NULL);
         paintContents(dc,w,h-34);
         SetViewportOrgEx(dc,0,0,NULL);
@@ -355,31 +358,32 @@ static void paintFrame(HDC dc, int w, int h)
 
 static void copyDiagnostics(HWND hwnd)
 {
-    char buffer[1600], values[7][24];
+    char buffer[1600], values[8][24];
     int i;
-    NP_SIZE memoryValues[7];
+    NP_SIZE memoryValues[8];
     HGLOBAL block;
     char *destination;
     DWORD length;
     memoryValues[0]=sample.totalKB; memoryValues[1]=sample.availableKB;
-    memoryValues[2]=sample.commitKB; memoryValues[3]=sample.limitKB;
-    memoryValues[4]=sample.peakKB; memoryValues[5]=sample.pagedKB;
-    memoryValues[6]=sample.nonpagedKB;
-    for (i=0;i<7;++i) formatSize(values[i],memoryValues[i]);
+    memoryValues[2]=sample.cacheKB; memoryValues[3]=sample.commitKB;
+    memoryValues[4]=sample.limitKB; memoryValues[5]=sample.peakKB;
+    memoryValues[6]=sample.pagedKB; memoryValues[7]=sample.nonpagedKB;
+    for (i=0;i<8;++i) formatSize(values[i],memoryValues[i]);
     wsprintfA(buffer,
         "NTPERF R4 (%s)\r\nWindows version: %lu.%lu build %lu\r\n"
         "Processors: %lu; page size: %lu\r\n"
         "Sampling status: CPU=%08lX Performance=%08lX Processes=%08lX Handles=%08lX\r\n"
         "Process query=%08lX (Processes above includes decoding); memory Win32 error=%lu\r\n"
-        "CPU=%d%% Kernel=%d%% MemoryValid=%d TotalsValid=%d HandlesValid=%d\r\n"
-        "Physical=%sK Available=%sK Commit=%sK Limit=%sK Peak=%sK\r\n"
+        "CPU=%d%% Kernel=%d%% MemoryValid=%d TotalsValid=%d HandlesValid=%d CacheValid=%d\r\n"
+        "Physical=%sK Available=%sK File cache=%sK Commit=%sK Limit=%sK Peak=%sK\r\n"
         "Paged pool=%sK Nonpaged pool=%sK Processes=%lu Threads=%lu Handles=%lu\r\n",
         backendName(),version&255,(version>>8)&255,(version>>16)&65535,
         sysInfo.dwNumberOfProcessors,sysInfo.dwPageSize,
         (DWORD)sample.cpuStatus,(DWORD)sample.perfStatus,(DWORD)sample.processStatus,(DWORD)sample.handleStatus,
         (DWORD)sample.processQueryStatus,sample.memoryError,
-        sample.cpu,sample.kernel,sample.memoryValid,sample.totalsValid,sample.handlesValid,
-        values[0],values[1],values[2],values[3],values[4],values[5],values[6],sample.processes,sample.threads,sample.handles);
+        sample.cpu,sample.kernel,sample.memoryValid,sample.totalsValid,sample.handlesValid,sample.cacheValid,
+        values[0],values[1],values[2],values[3],values[4],values[5],values[6],values[7],
+        sample.processes,sample.threads,sample.handles);
     length = (DWORD)lstrlenA(buffer)+1;
     block = GlobalAlloc(GMEM_MOVEABLE,length);
     if (!block) return;
@@ -396,7 +400,10 @@ static void copyDiagnostics(HWND hwnd)
 static void updateMenu(HWND hwnd)
 {
     HMENU menu;
+    int i;
     menu = GetMenu(hwnd);
+    for (i=1;i<COLUMNS;++i)
+        CheckMenuItem(menu,ID_SHOWCOLUMN+i,MF_BYCOMMAND|(columnShown[i]?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_PERCPU,MF_BYCOMMAND|(perCpu?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_TOP,MF_BYCOMMAND|(topmost?MF_CHECKED:MF_UNCHECKED));
     CheckMenuItem(menu,ID_KERNEL,MF_BYCOMMAND|(showKernel?MF_CHECKED:MF_UNCHECKED));
@@ -425,7 +432,9 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         limits->ptMinTrackSize.x = area.right-area.left;
         limits->ptMinTrackSize.y = area.bottom-area.top;
         return 0;
-    case WM_SIZE: layoutProcessControls(); InvalidateRect(hwnd,NULL,FALSE); return 0;
+    case WM_SIZE: layoutProcessControls(); layoutAppControls(); InvalidateRect(hwnd,NULL,FALSE); return 0;
+    case WM_INITMENUPOPUP: updateProcessMenu(); break;
+    case WM_ENDTASKDONE: endTaskDone((BOOL)lp); return 0;
     case WM_MEASUREITEM:
         ((MEASUREITEMSTRUCT *)lp)->itemHeight=(UINT)rowHeight;
         return TRUE;
@@ -433,18 +442,22 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         if (((DRAWITEMSTRUCT *)lp)->CtlID==ID_LIST) drawProcessItem((DRAWITEMSTRUCT *)lp);
         else drawTab((DRAWITEMSTRUCT *)lp);
         return TRUE;
-    case WM_TIMER: if (!paused && !endingProcess) takeSample(); return 0;
+    case WM_TIMER: if (!paused && !processBusy) takeSample(); return 0;
     case WM_KEYDOWN:
         if (wp == VK_F5) takeSample();
         if (wp == VK_SPACE) SendMessageA(hwnd,WM_COMMAND,ID_PAUSE,0);
         return 0;
     case WM_COMMAND:
         command = LOWORD(wp);
-        if (command == ID_PROCESSES) setProcessTab(0);
-        else if (command == ID_PERFORMANCE) setProcessTab(1);
+        if (command >= ID_TAB && command < ID_TAB+TABS) setTab(command-ID_TAB);
         else if (command == ID_LIST) updateProcessControls();
+        else if (command == ID_APPLIST) appListNotify(HIWORD(wp));
         else if (command == ID_ENDPROCESS) endSelectedProcess();
+        else if (command == ID_ENDTASK) endSelectedTask();
+        else if (command == ID_SWITCHTO) switchToSelected();
+        else if (command >= ID_PRIORITY && command < ID_PRIORITY+3) setSelectedPriority(command-ID_PRIORITY);
         else if (command >= ID_COLUMN && command < ID_COLUMN+COLUMNS) sortByColumn(command-ID_COLUMN);
+        else if (command > ID_SHOWCOLUMN && command < ID_SHOWCOLUMN+COLUMNS) toggleColumn(command-ID_SHOWCOLUMN);
         else if (command == ID_RUN) showRunDialog(hwnd);
         else if (command == ID_PERCPU) perCpu = !perCpu;
         else if (command == ID_EXIT) DestroyWindow(hwnd);
@@ -508,9 +521,11 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
 
 static HMENU createMenu(void)
 {
-    HMENU menu, file, options, view, help;
+    HMENU menu, file, options, view, columns, priority, help;
+    int i;
     menu=CreateMenu(); file=CreatePopupMenu(); options=CreatePopupMenu();
-    view=CreatePopupMenu(); help=CreatePopupMenu();
+    view=CreatePopupMenu(); columns=CreatePopupMenu(); processMenu=CreatePopupMenu();
+    priority=CreatePopupMenu(); help=CreatePopupMenu();
     AppendMenuA(file,MF_STRING,ID_RUN,"&Run...");
     AppendMenuA(file,MF_SEPARATOR,0,NULL);
     AppendMenuA(file,MF_STRING,ID_EXIT,"E&xit");
@@ -523,11 +538,21 @@ static HMENU createMenu(void)
     AppendMenuA(view,MF_STRING,ID_REFRESH,"&Refresh now\tF5");
     AppendMenuA(view,MF_STRING,ID_PERCPU,"One graph per &CPU");
     AppendMenuA(view,MF_STRING,ID_KERNEL,"Show &kernel times");
+    for (i=1;i<COLUMNS;++i) AppendMenuA(columns,MF_STRING,ID_SHOWCOLUMN+i,columnNames[i]);
+    AppendMenuA(view,MF_SEPARATOR,0,NULL);
+    AppendMenuA(view,MF_POPUP,(WPARAM)columns,"Process &Columns");
+    AppendMenuA(processMenu,MF_STRING,ID_ENDPROCESS,"&End Process\tDel");
+    AppendMenuA(processMenu,MF_SEPARATOR,0,NULL);
+    AppendMenuA(processMenu,MF_POPUP,(WPARAM)priority,"Set &Priority");
+    AppendMenuA(priority,MF_STRING,ID_PRIORITY+2,"&High");
+    AppendMenuA(priority,MF_STRING,ID_PRIORITY+1,"&Normal");
+    AppendMenuA(priority,MF_STRING,ID_PRIORITY,"&Idle");
     AppendMenuA(help,MF_STRING,ID_COPY,"&Copy diagnostics");
     AppendMenuA(help,MF_STRING,ID_ABOUT,"&About NTPERF31");
     AppendMenuA(menu,MF_POPUP,(WPARAM)file,"&File");
     AppendMenuA(menu,MF_POPUP,(WPARAM)options,"&Options");
     AppendMenuA(menu,MF_POPUP,(WPARAM)view,"&View");
+    AppendMenuA(menu,MF_POPUP,(WPARAM)processMenu,"&Process");
     AppendMenuA(menu,MF_POPUP,(WPARAM)help,"&Help");
     return menu;
 }
@@ -576,6 +601,7 @@ static void runApp(void)
     if (!mainWindow) ExitProcess(3);
     updateMenu(mainWindow);
     createProcessControls();
+    createAppControls();
     takeSample();
     ShowWindow(mainWindow,SW_SHOWNORMAL);
     UpdateWindow(mainWindow);
@@ -583,11 +609,14 @@ static void runApp(void)
     while ((result=GetMessageA(&msg,NULL,0,0)) > 0) {
         if (msg.message==WM_KEYDOWN && msg.wParam==VK_F5) { takeSample(); continue; }
         if (msg.message==WM_KEYDOWN && msg.wParam==VK_TAB && (GetKeyState(VK_CONTROL)&0x8000)) {
-            setProcessTab(!activeTab); continue;
+            setTab((activeTab+1)%TABS); continue;
         }
         if (msg.message==WM_KEYDOWN && msg.wParam==VK_DELETE && msg.hwnd==processList) {
             endSelectedProcess(); continue;
         }
+        if (msg.message==WM_KEYDOWN && msg.wParam==VK_DELETE && msg.hwnd==appList) { endSelectedTask(); continue; }
+        if (msg.message==WM_KEYDOWN && msg.wParam==VK_RETURN && msg.hwnd==appList) { switchToSelected(); continue; }
+        if (msg.message==WM_RBUTTONUP && msg.hwnd==processList) { processContextMenu(msg.lParam); continue; }
         if (IsDialogMessageA(mainWindow,&msg)) continue;
         TranslateMessage(&msg);
         DispatchMessageA(&msg);

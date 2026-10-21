@@ -4,8 +4,8 @@
 #include "counters.h"
 #include "numbers.h"
 typedef struct {
-    NP_U32 pid, threads, nameOffset, nameBytes;
-    NP_SIZE workingKB, virtualKB;
+    NP_U32 pid, threads, nameOffset, nameBytes, faults, priority, handles;
+    NP_SIZE workingKB, virtualKB, peakKB, commitKB, pagedKB, nonpagedKB;
     char name[260];
     TIME64 created, user, kernel;
 } PROCDATA;

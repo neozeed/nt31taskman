@@ -1,6 +1,6 @@
 TARGET ?= nt31
 COMMON = -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector
-HEADERS = backend.h counters.h numbers.h process.h process-ui.inc run-ui.inc native-query.inc
+HEADERS = backend.h counters.h numbers.h process.h process-ui.inc apps-ui.inc run-ui.inc native-query.inc
 ifeq ($(TARGET),win64)
 CC = x86_64-w64-mingw32-gcc
 OUTPUT = NTPERF64.EXE

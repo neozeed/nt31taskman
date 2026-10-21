@@ -44,7 +44,14 @@ static int decodeProcess(const unsigned char *buffer, NP_U32 length,
     p->user=npTime(r,0x28);
     p->kernel=npTime(r,0x30);
     p->pid=(NP_U32)pid;
+    p->priority=npWord(r,0x48);
+    p->handles=npWord(r,0x60);
+    p->faults=npWord(r,0x80);
     p->workingKB=npWide(r,0x90)/1024;
     p->virtualKB=npWide(r,0x78)/1024;
+    p->peakKB=npWide(r,0x88)/1024;
+    p->pagedKB=npWide(r,0xa0)/1024;
+    p->nonpagedKB=npWide(r,0xb0)/1024;
+    p->commitKB=npWide(r,0xc8)/1024;
     return 1;
 }
