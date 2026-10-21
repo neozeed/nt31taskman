@@ -53,7 +53,7 @@ make -f Makefile.cross TARGET=win64
 The equivalent direct Win64 command is:
 
 ```sh
-x86_64-w64-mingw32-gcc -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector -nostdlib -Wl,--entry,WinMainCRTStartup -Wl,--subsystem,windows:6.1 -Wl,--major-os-version,6,--minor-os-version,1 -Wl,--dynamicbase,--nxcompat -Wl,--no-insert-timestamp -o NTPERF64.EXE ntperf3x.c win64.c -luser32 -lgdi32 -lkernel32 -lpsapi
+x86_64-w64-mingw32-gcc -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector -nostdlib -Wl,--entry,WinMainCRTStartup -Wl,--subsystem,windows:6.1 -Wl,--major-os-version,6,--minor-os-version,1 -Wl,--dynamicbase,--nxcompat -Wl,--no-insert-timestamp -o NTPERF64.EXE ntperf3x.c win64.c -luser32 -lgdi32 -lkernel32 -ladvapi32 -lpsapi
 ```
 
 **Compile and link the selected backend as well as ntperf3x.c.** Select `nt3x.c` for the x86 build or `win64.c` for the x64 build. Do not link both. The original Microsoft build files have also been updated to include `nt3x.obj`, but that toolchain was not available for validation.

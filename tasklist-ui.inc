@@ -62,16 +62,20 @@ static int tasklistArgument(void)
     int n=lstrlenA(line);
     return n>=9 && !lstrcmpiA(line+n-9,"/tasklist");
 }
-/* Started by Program Manager: stay hidden until Ctrl+Esc or SC_TASKLIST, and
- * hide instead of closing, as nothing else will bring a Task List back. High
- * priority, like the original, keeps Ctrl+Esc working while an app spins. */
+/* Started by Program Manager, which then skips its own Task List: stay hidden
+ * until Ctrl+Esc or SC_TASKLIST, and hide instead of closing, as nothing else
+ * will bring a Task List back. Without Ctrl+Esc, a desktop double-click or
+ * running NTPERF3X again still opens it. High priority, like the original,
+ * keeps it responsive while an app spins. */
 static void startTasklist(void)
 {
     union { FARPROC generic; REGISTER_TASKLIST registerTasklist; } fn;
     if (!tasklistSupported() || !tasklistArgument()) return;
-    if (!RegisterHotKey(mainWindow,1,MOD_CONTROL,VK_ESCAPE)) return;
     fn.generic=GetProcAddress(GetModuleHandleA("user32.dll"),"RegisterTasklist");
     if (fn.registerTasklist) fn.registerTasklist(mainWindow);
+    if (!RegisterHotKey(mainWindow,1,MOD_CONTROL,VK_ESCAPE))
+        MessageBoxA(NULL,"Another program is using Ctrl+Esc. Double-click the desktop to open the Task List.",
+            "NTPERF3X",MB_OK|MB_ICONEXCLAMATION);
     SetPriorityClass(GetCurrentProcess(),HIGH_PRIORITY_CLASS);
     tasklistMode=1;
 }
