@@ -17,15 +17,16 @@ static const char *columnNames[COLUMNS]={
     "Image Name", "PID", "CPU", "CPU Time", "Mem Usage", "Mem Delta", "Peak Mem", "Page Faults",
     "PF Delta", "VM Size", "Commit", "Paged Pool", "NP Pool", "Base Pri", "Handles", "Threads"
 };
-static int columnWidths[COLUMNS]={170,48,42,78,78,70,78,74,60,78,78,70,62,58,58,55};
+static int columnWidths[COLUMNS]={170,48,42,78,78,70,78,74,60,78,78,70,62,78,58,55};
 static int columnShown[COLUMNS]={1,1,1,1,1,0,0,0,0,1,0,0,0,0,0,1};
-static const char *priorityNames[4]={"Idle","Normal","High","Realtime"};
+static const char *priorityNames[6]={"Idle","Normal","High","Realtime","Below Normal","Above Normal"};
 static int activeTab=TAB_PROCESSES, sortColumn=COL_NAME, sortDescending=0, processBusy=0;
 static int rowHeight=18;
 typedef struct {
     PROCDATA data; char name[260];
     int cpu, hasDelta, hasHandles;
-    LONG memDelta, faultDelta;
+    NP_SSIZE memDelta;
+    LONG faultDelta;
 } PROCESSROW;
 static PROCESSROW *processRows;
 static DWORD processCount, processTick;
@@ -46,10 +47,17 @@ static int protectedProcess(const PROCESSROW *p)
         if (!lstrcmpiA(p->name,names[i])) return 1;
     return 0;
 }
-/* Base priority to class, as pview does: idle 4, normal 7-9, high 13, realtime 24. */
+/* Base priority to a priorityNames index, as NT 4 Task Manager does: idle 4,
+ * normal 7-9, high 13, realtime 24. Windows 2000 adds below normal 6 and
+ * above normal 10, which the Set Priority menu does not offer. */
 static int priorityLevel(NP_U32 priority)
 {
-    return priority<7 ? 0 : priority<10 ? 1 : priority<16 ? 2 : 3;
+    int classes2000=LOBYTE(LOWORD(version))>=5;
+    if (priority<=4) return 0;
+    if (classes2000 && priority<=6) return 4;
+    if (priority<=9) return 1;
+    if (classes2000 && priority<=11) return 5;
+    return priority<16 ? 2 : 3;
 }
 static DWORD cpuSeconds(const PROCDATA *p)
 {
@@ -58,6 +66,11 @@ static DWORD cpuSeconds(const PROCDATA *p)
 static void kilobytes(char *buffer, NP_SIZE value)
 {
     formatSize(buffer,value); lstrcatA(buffer," K");
+}
+static void signedKilobytes(char *buffer, NP_SSIZE value)
+{
+    if (value<0) *buffer++='-';
+    kilobytes(buffer,value<0 ? (NP_SIZE)0-(NP_SIZE)value : (NP_SIZE)value);
 }
 static void cellText(const PROCESSROW *p, int column, char *buffer)
 {
@@ -72,7 +85,7 @@ static void cellText(const PROCESSROW *p, int column, char *buffer)
         wsprintfA(buffer,"%lu:%02lu:%02lu",seconds/3600,(seconds/60)%60,seconds%60);
         return;
     case COL_MEM: kilobytes(buffer,d->workingKB); return;
-    case COL_MEMDELTA: if (!p->hasDelta) break; wsprintfA(buffer,"%ld K",p->memDelta); return;
+    case COL_MEMDELTA: if (!p->hasDelta) break; signedKilobytes(buffer,p->memDelta); return;
     case COL_PEAK: kilobytes(buffer,d->peakKB); return;
     case COL_FAULTS: wsprintfA(buffer,"%lu",(DWORD)d->faults); return;
     case COL_FAULTDELTA: if (!p->hasDelta) break; wsprintfA(buffer,"%ld",p->faultDelta); return;
@@ -94,7 +107,7 @@ static double cellValue(const PROCESSROW *p, int column)
     case COL_CPU: return p->cpu;
     case COL_TIME: return processTime(d);
     case COL_MEM: return d->workingKB;
-    case COL_MEMDELTA: return p->memDelta;
+    case COL_MEMDELTA: return (double)p->memDelta;
     case COL_PEAK: return d->peakKB;
     case COL_FAULTS: return d->faults;
     case COL_FAULTDELTA: return p->faultDelta;
@@ -209,7 +222,7 @@ static void collectProcesses(const PROCDATA *data, DWORD count)
         old=processBaseline ? previousRow(&rows[i].data) : NULL;
         if (!old) continue;
         rows[i].hasDelta=1;
-        rows[i].memDelta=(LONG)rows[i].data.workingKB-(LONG)old->data.workingKB;
+        rows[i].memDelta=(NP_SSIZE)(rows[i].data.workingKB-old->data.workingKB);
         rows[i].faultDelta=(LONG)(rows[i].data.faults-old->data.faults);
         if (!elapsed || sample.cpuStatus<0 || !sysInfo.dwNumberOfProcessors) continue;
         userDelta=timeDelta(rows[i].data.user,old->data.user);

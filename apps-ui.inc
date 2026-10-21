@@ -8,7 +8,7 @@
 typedef BOOL (WINAPI *END_TASK)(HWND, BOOL, BOOL);
 typedef void (WINAPI *SWITCH_TO)(HWND, BOOL);
 typedef int (WINAPI *WINDOW_TEXT)(HWND, LPWSTR, int);
-typedef struct { HWND hwnd; char title[160]; } APPROW;
+typedef struct { HWND hwnd; DWORD pid; char title[160]; } APPROW;
 static HWND appList, endTaskButton, switchButton, endingTask;
 static DWORD endingPid, appCount, foundCount;
 static APPROW appRows[MAX_APPS], foundApps[MAX_APPS];
@@ -21,13 +21,22 @@ static WINDOW_TEXT windowText;
 static void windowTitle(HWND hwnd, char *title, int size)
 {
     WCHAR wide[160];
-    int n;
+    int n, m=0;
     title[0]=0;
     if (!windowText) { GetWindowTextA(hwnd,title,size); return; }
     n=windowText(hwnd,wide,160);
-    if (n<=0) return;
-    n=WideCharToMultiByte(CP_ACP,0,wide,n<160?n:159,title,size-1,NULL,NULL);
-    title[n>0?n:0]=0;
+    if (n>159) n=159;
+    /* A DBCS title can need more bytes than characters: drop characters until it fits. */
+    while (n>0 && !(m=WideCharToMultiByte(CP_ACP,0,wide,n,title,size-1,NULL,NULL))) --n;
+    title[m]=0;
+}
+/* A window handle can be reused once its window closes, so actions check
+ * that the owner recorded at enumeration still owns it. */
+static int ownedBy(HWND hwnd, DWORD pid)
+{
+    DWORD owner=0;
+    GetWindowThreadProcessId(hwnd,&owner);
+    return owner==pid;
 }
 /* Same filter as the NT 3.x Task List: visible, unowned, titled, not ours. */
 static BOOL CALLBACK collectApp(HWND hwnd, LPARAM unused)
@@ -43,6 +52,7 @@ static BOOL CALLBACK collectApp(HWND hwnd, LPARAM unused)
     windowTitle(hwnd,app->title,(int)sizeof(app->title));
     if (!app->title[0]) return TRUE;
     app->hwnd=hwnd;
+    app->pid=pid;
     ++foundCount;
     return TRUE;
 }
@@ -56,20 +66,21 @@ static int sameApps(void)
     DWORD i;
     if (foundCount!=appCount) return 0;
     for (i=0;i<appCount;++i)
-        if (foundApps[i].hwnd!=appRows[i].hwnd || lstrcmpA(foundApps[i].title,appRows[i].title)) return 0;
+        if (foundApps[i].hwnd!=appRows[i].hwnd || foundApps[i].pid!=appRows[i].pid ||
+            lstrcmpA(foundApps[i].title,appRows[i].title)) return 0;
     return 1;
 }
-static HWND selectedApp(void)
+static const APPROW *selectedApp(void)
 {
     int selection;
     if (!appList) return NULL;
     selection=(int)SendMessageA(appList,LB_GETCURSEL,0,0);
-    if (selection<0 || (DWORD)selection>=appCount || !IsWindow(appRows[selection].hwnd)) return NULL;
-    return appRows[selection].hwnd;
+    if (selection<0 || (DWORD)selection>=appCount) return NULL;
+    return ownedBy(appRows[selection].hwnd,appRows[selection].pid) ? &appRows[selection] : NULL;
 }
 static void updateAppControls(void)
 {
-    HWND app=selectedApp();
+    const APPROW *app=selectedApp();
     if (!appList) return;
     EnableWindow(switchButton,app!=NULL);
     EnableWindow(endTaskButton,app!=NULL && !endingTask);
@@ -121,8 +132,8 @@ static void switchToApp(HWND hwnd)
 }
 static void switchToSelected(void)
 {
-    HWND app=selectedApp();
-    if (app) switchToApp(app);
+    const APPROW *app=selectedApp();
+    if (app) switchToApp(app->hwnd);
 }
 static DWORD WINAPI endTaskThread(LPVOID app)
 {
@@ -133,38 +144,38 @@ static DWORD WINAPI endTaskThread(LPVOID app)
  * not-responding dialog, so it blocks; the NT 3.x Task List runs it on a thread. */
 static void endSelectedTask(void)
 {
-    HWND app=selectedApp();
+    const APPROW *app=selectedApp();
+    HWND hwnd;
     HANDLE thread;
     DWORD id;
     if (!app || endingTask) return;
-    if (!endTask) { PostMessageA(app,WM_CLOSE,0,0); return; }
-    switchToApp(app);
-    GetWindowThreadProcessId(app,&endingPid);
-    endingTask=app;
-    thread=CreateThread(NULL,0,endTaskThread,(LPVOID)app,0,&id);
-    if (!thread) { endingTask=NULL; PostMessageA(app,WM_CLOSE,0,0); return; }
+    hwnd=app->hwnd;
+    if (!endTask) { PostMessageA(hwnd,WM_CLOSE,0,0); return; }
+    endingPid=app->pid;
+    switchToApp(hwnd);
+    endingTask=hwnd;
+    thread=CreateThread(NULL,0,endTaskThread,(LPVOID)hwnd,0,&id);
+    if (!thread) { endingTask=NULL; PostMessageA(hwnd,WM_CLOSE,0,0); return; }
     CloseHandle(thread);
     updateAppControls();
 }
 /* EndTask returned FALSE: the application refused (e.g. Cancel on its save
- * prompt). Offer to force it, unless the window is gone or now belongs to
- * another process. */
+ * prompt). Offer to force it while the window still belongs to the same
+ * process, checked again after the prompt. */
 static void endTaskDone(BOOL closed)
 {
     HWND app=endingTask;
-    DWORD pid=0;
+    DWORD pid=endingPid;
     char title[160], prompt[400];
     endingTask=NULL;
     refreshApps();
-    if (closed || !IsWindow(app)) return;
-    GetWindowThreadProcessId(app,&pid);
-    if (pid!=endingPid) return;
+    if (closed || !ownedBy(app,pid)) return;
     windowTitle(app,title,(int)sizeof(title));
     wsprintfA(prompt,"%s has chosen not to close. It may be completing a lengthy task.\n\n"
         "Forcing it to close may lose data. Force it to close?",title);
     SetForegroundWindow(mainWindow);
-    if (MessageBoxA(mainWindow,prompt,"End Task",MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2)==IDYES)
-        endTask(app,FALSE,TRUE);
+    if (MessageBoxA(mainWindow,prompt,"End Task",MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2)!=IDYES) return;
+    if (ownedBy(app,pid)) endTask(app,FALSE,TRUE);
 }
 static void appListNotify(int code)
 {
