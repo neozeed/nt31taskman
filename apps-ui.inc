@@ -133,7 +133,9 @@ static void switchToApp(HWND hwnd)
 static void switchToSelected(void)
 {
     const APPROW *app=selectedApp();
-    if (app) switchToApp(app->hwnd);
+    if (!app) return;
+    switchToApp(app->hwnd);
+    if (tasklistMode) ShowWindow(mainWindow,SW_HIDE);
 }
 static DWORD WINAPI endTaskThread(LPVOID app)
 {
