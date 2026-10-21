@@ -10,6 +10,8 @@ typedef LONG (WINAPI *VERSION_QUERY)(OSVERSIONINFOW *);
 typedef WORD (WINAPI *GROUP_COUNT)(void);
 static int multipleGroups;
 static int backendCpuSupported(void) { return !multipleGroups; }
+/* The x64 record already carries HandleCount. */
+static LONG backendReadHandles(PROCDATA *rows, DWORD count) { (void)rows; (void)count; return 0; }
 #include "native-query.inc"
 int backendInit(DWORD *version)
 {
@@ -42,16 +44,15 @@ void backendReadMemory(SAMPLE *s, const SYSTEM_INFO *info)
     s->memoryValid=GetPerformanceInfo(&p,sizeof(p))!=0;
     s->memoryError=s->memoryValid ? 0 : GetLastError();
     s->perfStatus=s->memoryValid ? 0 : (LONG)0xc0000001L;
-    s->handleStatus=s->perfStatus;
-    s->handlesValid=s->memoryValid;
+    s->cacheValid=s->memoryValid;
     if (!s->memoryValid) return;
     pageKB=(NP_SIZE)p.PageSize/1024;
     s->totalKB=(NP_SIZE)p.PhysicalTotal*pageKB;
     s->availableKB=(NP_SIZE)p.PhysicalAvailable*pageKB;
+    s->cacheKB=(NP_SIZE)p.SystemCache*pageKB;
     s->commitKB=(NP_SIZE)p.CommitTotal*pageKB;
     s->limitKB=(NP_SIZE)p.CommitLimit*pageKB;
     s->peakKB=(NP_SIZE)p.CommitPeak*pageKB;
     s->pagedKB=(NP_SIZE)p.KernelPaged*pageKB;
     s->nonpagedKB=(NP_SIZE)p.KernelNonpaged*pageKB;
-    s->handles=p.HandleCount;
 }

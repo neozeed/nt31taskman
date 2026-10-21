@@ -1,4 +1,4 @@
-/* Released NT 3.1 x86 layout, isolated from the UI. */
+/* Released NT 3.1/3.5 x86 layout, isolated from the UI. */
 static NP_U32 npWord(const unsigned char *p, NP_U32 at)
 {
     return (NP_U32)p[at] | ((NP_U32)p[at+1]<<8) |
@@ -33,7 +33,14 @@ static int decodeProcess(const unsigned char *buffer, NP_U32 length,
     p->user=npTime(r,0x28);
     p->kernel=npTime(r,0x30);
     p->pid=npWord(r,0x44);
+    p->priority=npWord(r,0x40);
+    p->faults=npWord(r,0x60);
+    p->handles=0;
     p->workingKB=npWord(r,0x68)/1024;
     p->virtualKB=npWord(r,0x5c)/1024;
+    p->peakKB=npWord(r,0x64)/1024;
+    p->pagedKB=npWord(r,0x70)/1024;
+    p->nonpagedKB=npWord(r,0x78)/1024;
+    p->commitKB=npWord(r,0x84)/1024;
     return 1;
 }

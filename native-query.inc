@@ -66,13 +66,14 @@ LONG backendReadCpu(CPUINFO *current, DWORD count)
     if (status>=0 && returned && returned!=count*sizeof(CPUINFO)) return (LONG)0xc000000dL;
     return status;
 }
-LONG backendReadProcesses(PROCDATA **out, DWORD *outCount, LONG *queryStatus)
+LONG backendReadProcesses(PROCDATA **out, DWORD *outCount, LONG *queryStatus, LONG *handleStatus)
 {
     DWORD length=0, pos, count, i;
     NP_U32 next;
     PROCDATA decoded, *rows;
     int chars;
     *out=NULL; *outCount=0;
+    *handleStatus=(LONG)0xc0000001L;
     *queryStatus=variableQuery(5,&length);
     if (*queryStatus<0) return *queryStatus;
     pos=count=0;
@@ -95,6 +96,7 @@ LONG backendReadProcesses(PROCDATA **out, DWORD *outCount, LONG *queryStatus)
         rows[i].name[chars>0 ? chars : 0]=0;
         pos+=next;
     }
+    *handleStatus=backendReadHandles(rows,count);
     *out=rows; *outCount=count;
     return 0;
 }

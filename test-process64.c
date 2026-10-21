@@ -29,10 +29,14 @@ int main(void)
     put(b,0x28,20000000); put(b,0x30,10000000);
     put(b,0x38,8|(8U<<16)); wide(b,0x40,base+0x210);
     wide(b,0x50,27); wide(b,0x78,bytes); wide(b,0x90,(NP_SIZE)8*1024*1024*1024);
+    put(b,0x48,8); put(b,0x60,321); put(b,0x80,77); wide(b,0x88,(NP_SIZE)16*1024*1024*1024);
+    wide(b,0xa0,4096); wide(b,0xb0,2048); wide(b,0xc8,12288);
     assert(decodeProcess(b,sizeof(b),base,0,&p,&next));
     assert(next==0x100 && p.pid==27 && p.threads==9);
     assert(p.nameOffset==0x210 && p.nameBytes==8);
     assert(p.virtualKB==bytes/1024 && p.workingKB==8388608);
+    assert(p.priority==8 && p.handles==321 && p.faults==77);
+    assert(p.peakKB==16777216 && p.pagedKB==4 && p.nonpagedKB==2 && p.commitKB==12);
     formatSize(number,p.virtualKB); assert(!strcmp(number,"5368709120"));
     formatSize(number,(NP_SIZE)-1); assert(!strcmp(number,"18446744073709551615"));
     formatSize(number,0); assert(!strcmp(number,"0"));
