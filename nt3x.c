@@ -1,9 +1,9 @@
 #ifdef _WIN64
-#error nt31.c requires the x86 NT 3.1 target
+#error nt3x.c requires the x86 NT 3.x target
 #endif
 #define NTPERF_BACKEND
 #include "backend.h"
-#include "process-nt31.h"
+#include "process-nt3x.h"
 static int backendCpuSupported(void) { return 1; }
 static LONG backendReadHandles(PROCDATA *rows, DWORD count);
 #include "native-query.inc"
@@ -12,7 +12,7 @@ int backendInit(DWORD *version)
     *version=GetVersion();
     return initNative();
 }
-const char *backendName(void) { return "NT 3.1 x86"; }
+const char *backendName(void) { return "NT 3.x x86"; }
 void backendReadMemory(SAMPLE *s, const SYSTEM_INFO *info)
 {
     DWORD perf[78], cache[3];

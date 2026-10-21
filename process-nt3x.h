@@ -1,4 +1,4 @@
-/* Released NT 3.1 x86 layout, isolated from the UI. */
+/* Released NT 3.1/3.5 x86 layout, isolated from the UI. */
 static NP_U32 npWord(const unsigned char *p, NP_U32 at)
 {
     return (NP_U32)p[at] | ((NP_U32)p[at+1]<<8) |

@@ -1,16 +1,16 @@
-# NT Performance — NTPERF31
+# NT Performance — NTPERF3X
 
 <img width="802" height="640" alt="image" src="https://github.com/user-attachments/assets/78e144cd-bc05-4307-9ec1-e1f990f51e62" />
 
-### Windows NT 3.1, now with substantially more green graphs.
+### Windows NT 3.x, now with substantially more green graphs.
 
-Windows NT 3.1 has the blue title bars. It has Program Manager. It has File Manager. It has a proper operating system lurking beneath a desktop that looks as though it would like you to fax it something.
+Windows NT 3.x has the blue title bars. It has Program Manager. It has File Manager. It has a proper operating system lurking beneath a desktop that looks as though it would like you to fax it something.
 
 What it could really use is that familiar NT 4-style window: **processes, CPU usage, memory statistics, and little green lines that tell you the machine is doing something.**
 
 So here it is.
 
-**NTPERF31 is a small, native x86 performance monitor and process manager for released Windows NT 3.1.** It brings an NT 4-inspired Processes and Performance interface to the older system, while keeping NT 3.1's own window frame, menus, and wonderfully unapologetic grey desktop furniture.
+**NTPERF3X is a small, native x86 performance monitor and process manager for Windows NT 3.1 and 3.5.** It brings an NT 4-inspired Processes and Performance interface to the older system, while keeping NT 3.x's own window frame, menus, and wonderfully unapologetic grey desktop furniture.
 
 It has been run on **Windows NT 3.1 SP3 under QEMU**, with both the performance graphs and process list working.
 
@@ -32,31 +32,31 @@ Targets NT 3.5 as well as NT 3.1, whose native structures are identical. Adds an
 
 Two executables, one interface:
 
-- **NTPERF31.EXE**: released Windows NT 3.1, x86. Original native layouts and only KERNEL32/USER32/GDI32 imports.
+- **NTPERF3X.EXE**: Windows NT 3.1 and 3.5, x86. Original native layouts and only KERNEL32/USER32/GDI32 imports.
 - **NTPERF64.EXE**: Windows 7 or later, x64 target. Modern native process records, 64-bit memory counters, and PSAPI GetPerformanceInfo for physical/commit/pool memory and handle totals. Also enumerates 32-bit processes.
 
 R3's per-processor graphs, smaller resizing, and Run dialog are retained.
 Both GNU builds use a custom entry point without a C runtime DLL dependency.
-The Win64 target uses OS/subsystem version 6.1 and enables ASLR/DEP; the NT 3.1 target retains version 3.10.
+The Win64 target uses OS/subsystem version 6.1 and enables ASLR/DEP; the NT 3.x target retains version 3.10.
 
 ### Build
 
 ```sh
-make -f Makefile.cross TARGET=nt31
+make -f Makefile.cross TARGET=nt3x
 make -f Makefile.cross TARGET=win64
 ```
 
 The equivalent direct Win64 command is:
 
 ```sh
-x86_64-w64-mingw32-gcc -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector -nostdlib -Wl,--entry,WinMainCRTStartup -Wl,--subsystem,windows:6.1 -Wl,--major-os-version,6,--minor-os-version,1 -Wl,--dynamicbase,--nxcompat -Wl,--no-insert-timestamp -o NTPERF64.EXE ntperf31.c win64.c -luser32 -lgdi32 -lkernel32 -lpsapi
+x86_64-w64-mingw32-gcc -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector -nostdlib -Wl,--entry,WinMainCRTStartup -Wl,--subsystem,windows:6.1 -Wl,--major-os-version,6,--minor-os-version,1 -Wl,--dynamicbase,--nxcompat -Wl,--no-insert-timestamp -o NTPERF64.EXE ntperf3x.c win64.c -luser32 -lgdi32 -lkernel32 -lpsapi
 ```
 
-**Compile and link the selected backend as well as ntperf31.c.** Select `nt31.c` for the x86 build or `win64.c` for the x64 build. Do not link both. The original Microsoft build files have also been updated to include `nt31.obj`, but that toolchain was not available for validation.
+**Compile and link the selected backend as well as ntperf3x.c.** Select `nt3x.c` for the x86 build or `win64.c` for the x64 build. Do not link both. The original Microsoft build files have also been updated to include `nt3x.obj`, but that toolchain was not available for validation.
 
 ### Backend boundary
 
-`backend.h` defines the normalized sample/process interface. `nt31.c` and `win64.c` own OS queries, process decoding, names, and memory conversion. `native-query.inc` shares bounded query-buffer allocation and CPU sampling between the two translation units. No pointers into a native query buffer escape to the UI. Process identity remains PID plus creation time; End Process still verifies the creation time on the opened handle before confirmation and termination.
+`backend.h` defines the normalized sample/process interface. `nt3x.c` and `win64.c` own OS queries, process decoding, names, and memory conversion. `native-query.inc` shares bounded query-buffer allocation and CPU sampling between the two translation units. No pointers into a native query buffer escape to the UI. Process identity remains PID plus creation time; End Process still verifies the creation time on the opened handle before confirmation and termination.
 
 Memory values use 64-bit integers in Win64, including stored history and decimal formatting. The process VM Size column retains its original meaning: total virtual size, not private commit. CPU percentages use elapsed user/kernel time, so they need not match a modern Task Manager's frequency-adjusted CPU display.
 
@@ -66,7 +66,7 @@ Diagnostics identify the backend, use RtlGetVersion on Win64, and report the raw
 
 ### Verification
 
-Both targets compile with warnings treated as errors. Portable tests cover the NT 3.1 decoder, x64 record chains and pointers above 4 GB, virtual sizes above 4 TiB, decimal formatting through the full 64-bit range, malformed input, PID reuse, and independent CPU loads. A separate compile-only test checks the x64 offsets against the MinGW SDK layout. PE headers and imported DLLs are checked.
+Both targets compile with warnings treated as errors. Portable tests cover the NT 3.x decoder, x64 record chains and pointers above 4 GB, virtual sizes above 4 TiB, decimal formatting through the full 64-bit range, malformed input, PID reuse, and independent CPU loads. A separate compile-only test checks the x64 offsets against the MinGW SDK layout. PE headers and imported DLLs are checked.
 
 **R4 has not yet been run on Windows or NT 3.1 in this build environment.** First live checks: populated process list and sorting; values compared with another monitor; Run/Cancel/invalid commands; and End Process on a disposable program. Retest the original NT 3.1 binary after the split.
 
@@ -123,10 +123,10 @@ There is also an **End Process** button. Sometimes the most useful performance o
 
 ## Run it
 
-Copy `NTPERF31.EXE` onto your NT 3.1 machine and launch it from File Manager, Program Manager, or a command prompt:
+Copy `NTPERF3X.EXE` onto your NT 3.x machine and launch it from File Manager, Program Manager, or a command prompt:
 
 ```bat
-NTPERF31.EXE
+NTPERF3X.EXE
 ```
 
 The **Processes** page opens first. Click **Performance** for the graphs.
@@ -160,7 +160,7 @@ Both pages continue collecting samples while you switch between them. Changing u
 
 **End Process forcibly terminates the selected process. Unsaved work in it will be lost.** It is not a polite request to close an application window.
 
-Before termination, NTPERF31:
+Before termination, NTPERF3X:
 
 1. Opens a handle to the selected process.
 2. Checks its creation time against the selected entry.
@@ -169,7 +169,7 @@ Before termination, NTPERF31:
 
 That matters because PIDs can be reused. A process disappearing while you look at the list must not turn into permission to kill whatever happens to inherit its number.
 
-The button is disabled for the monitor itself, Idle, the NT 3.1 System process, and several recognized critical system processes. Access failures are reported rather than worked around by enabling debug privilege.
+The button is disabled for the monitor itself, Idle, the NT 3.x System process, and several recognized critical system processes. Access failures are reported rather than worked around by enabling debug privilege.
 
 For a first test, use a disposable Notepad instance. NT may be robust, but your unsaved document is still just an unsaved document.
 
@@ -188,7 +188,7 @@ The physical-memory panel shows **File Cache** (the system cache working set), o
 
 ## Under the bonnet
 
-NTPERF31 uses ordinary **USER32 controls and GDI drawing**. The tabs are owner-drawn buttons; the process table is an owner-drawn listbox. There is no dependency on later common controls.
+NTPERF3X uses ordinary **USER32 controls and GDI drawing**. The tabs are owner-drawn buttons; the process table is an owner-drawn listbox. There is no dependency on later common controls.
 
 The GNU build directly imports only:
 
@@ -200,9 +200,9 @@ It resolves `NtQuerySystemInformation` dynamically from `NTDLL.DLL` to collect n
 
 **No COMCTL32, PSAPI, Toolhelp, PDH, MSVCRT, or kernel driver is required by the supplied build.** The PE operating-system and GUI subsystem versions are set to **3.10**, and the compiler targets the **i386 instruction set**.
 
-The old structure layouts matter. For example, the field at offset `0x4c` in an NT 3.1 process record is an I/O counter. Later versions use that location for a handle count. Reading it with the wrong definition can produce impressively detailed nonsense.
+The old structure layouts matter. For example, the field at offset `0x4c` in an NT 3.1 or 3.5 process record is an I/O counter. Later versions use that location for a handle count. Reading it with the wrong definition can produce impressively detailed nonsense.
 
-The decoder therefore uses the released NT 3.1 x86 layout explicitly, validates record links and Unicode-name bounds, and identifies processes by **PID plus creation time**. If a process snapshot fails, the previous rows remain visible with a stale-data message and End Process is disabled.
+The decoder therefore uses the NT 3.1/3.5 x86 layout explicitly, validates record links and Unicode-name bounds, and identifies processes by **PID plus creation time**. If a process snapshot fails, the previous rows remain visible with a stale-data message and End Process is disabled.
 
 A small executable can still have manners.
 
@@ -223,12 +223,12 @@ make CC=i686-w64-mingw32-gcc
 Output:
 
 ```text
-NTPERF31.EXE
+NTPERF3X.EXE
 ```
 
 The GNU build uses its own entry point and links without the C runtime. The source is C89 and builds with strict warnings enabled.
 
-An alternative `build-ms.cmd` is included for an **x86 NT 3.1 SDK / contemporary Microsoft compiler environment**. That route uses the compiler's normal runtime startup and remains untested. A modern Microsoft runtime should not be assumed to support NT 3.1.
+An alternative `build-ms.cmd` is included for an **x86 NT 3.1 SDK / contemporary Microsoft compiler environment**. That route uses the compiler's normal runtime startup and remains untested. A modern Microsoft runtime should not be assumed to support NT 3.x.
 
 ### Optional tests
 
@@ -253,7 +253,7 @@ These cover counter rollover and reset, multi-CPU normalization, historical proc
 
 Both views have been demonstrated running on **NT 3.1 SP3 under QEMU**. Local compilation, counter/decoder tests, and PE/header/import checks also pass. The screenshots establish the display and enumeration results; they do not constitute exhaustive testing of termination, every menu action, or multiprocessor hardware.
 
-This is an NT 4-inspired utility written for NT 3.1, not a port of Microsoft's Task Manager source. The supplied executable is **x86 only**; MIPS, Alpha, early NT betas, and other Windows releases are not claimed as tested targets.
+This is an NT 4-inspired utility written for NT 3.x, not a port of Microsoft's Task Manager source. The supplied executable is **x86 only**; MIPS, Alpha, early NT betas, and other Windows releases are not claimed as tested targets.
 
 ## Reporting problems
 

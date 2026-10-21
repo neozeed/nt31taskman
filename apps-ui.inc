@@ -1,4 +1,4 @@
-/* Included by ntperf31.c: Applications page. EndTask, SwitchToThisWindow and
+/* Included by ntperf3x.c: Applications page. EndTask, SwitchToThisWindow and
  * InternalGetWindowText are unlisted USER32 exports on NT 3.1 and 3.5. */
 #define ID_APPLIST 250
 #define ID_ENDTASK 251

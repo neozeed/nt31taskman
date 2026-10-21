@@ -9,7 +9,7 @@
 typedef INT_PTR NP_DLGRESULT;
 #else
 #define CPU_MAX 32
-#define APP_TITLE "NT Performance - Windows NT 3.1"
+#define APP_TITLE "NT Performance - Windows NT 3.x"
 typedef BOOL NP_DLGRESULT;
 #endif
 typedef struct {

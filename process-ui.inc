@@ -1,4 +1,4 @@
-/* Included by ntperf31.c: classic owner-drawn listbox, no COMCTL32. */
+/* Included by ntperf3x.c: classic owner-drawn listbox, no COMCTL32. */
 #define ID_TAB 200
 #define ID_ENDPROCESS 203
 #define ID_LIST 204

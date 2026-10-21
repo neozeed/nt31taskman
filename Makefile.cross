@@ -1,4 +1,4 @@
-TARGET ?= nt31
+TARGET ?= nt3x
 COMMON = -Os -std=c89 -pedantic -Wall -Wextra -Werror -fno-builtin -fno-stack-protector
 HEADERS = backend.h counters.h numbers.h process.h process-ui.inc apps-ui.inc run-ui.inc native-query.inc
 ifeq ($(TARGET),win64)
@@ -9,20 +9,20 @@ CFLAGS = $(COMMON)
 LDFLAGS = -nostdlib -Wl,--entry,WinMainCRTStartup -Wl,--subsystem,windows:6.1 -Wl,--major-os-version,6,--minor-os-version,1 -Wl,--dynamicbase,--nxcompat -Wl,--no-insert-timestamp
 LIBS = -luser32 -lgdi32 -lkernel32 -lpsapi
 HEADERS += process-win64.h
-else ifeq ($(TARGET),nt31)
+else ifeq ($(TARGET),nt3x)
 CC = i686-w64-mingw32-gcc
-OUTPUT = NTPERF31.EXE
-BACKEND = nt31.c
+OUTPUT = NTPERF3X.EXE
+BACKEND = nt3x.c
 CFLAGS = $(COMMON) -march=i386 -mno-sse -mno-sse2
 LDFLAGS = -nostdlib -Wl,--entry,_WinMainCRTStartup -Wl,--subsystem,windows:3.10 -Wl,--major-os-version,3,--minor-os-version,10 -Wl,--disable-dynamicbase,--disable-nxcompat -Wl,--no-insert-timestamp
 LIBS = -luser32 -lgdi32 -lkernel32
-HEADERS += process-nt31.h
+HEADERS += process-nt3x.h
 else
-$(error TARGET must be nt31 or win64)
+$(error TARGET must be nt3x or win64)
 endif
 all: $(OUTPUT)
-$(OUTPUT): ntperf31.c $(BACKEND) $(HEADERS)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ ntperf31.c $(BACKEND) $(LIBS)
+$(OUTPUT): ntperf3x.c $(BACKEND) $(HEADERS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ ntperf3x.c $(BACKEND) $(LIBS)
 clean:
-	rm -f NTPERF31.EXE NTPERF64.EXE
+	rm -f NTPERF3X.EXE NTPERF64.EXE
 .PHONY: all clean

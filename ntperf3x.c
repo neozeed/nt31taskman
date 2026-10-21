@@ -1,4 +1,4 @@
-/* NTPERF R4 - shared UI for NT 3.1 x86 and modern Win64.
+/* NTPERF R4 - shared UI for NT 3.x x86 and modern Win64.
  * Plain USER/GDI, no CRT or common controls. PSAPI is Win64-only.
  * See README.md for the historical structure references and test limits.
  */
@@ -473,11 +473,11 @@ static LRESULT CALLBACK windowProc(HWND hwnd, UINT message, WPARAM wp, LPARAM lp
         } else if (command == ID_REFRESH) takeSample();
         else if (command == ID_COPY) copyDiagnostics(hwnd);
         else if (command == ID_ABOUT) MessageBoxA(hwnd,
-            "NTPERF R4\nNT 4-style performance graphs for NT 3.1 and Win64.\n\n"
+            "NTPERF R4\nNT 4-style performance graphs for NT 3.x and Win64.\n\n"
             "Green: total CPU / committed memory.\nRed (optional): busy kernel CPU.\n"
             "Memory history is scaled to the current commit limit.\n\n"
             "F5: sample now   Space: pause/resume\n"
-            "Per-processor graphs: View > One graph per CPU.\nFile > Run starts a program.","About NTPERF31",MB_OK);
+            "Per-processor graphs: View > One graph per CPU.\nFile > Run starts a program.","About NTPERF3X",MB_OK);
         else if (command == ID_FAST || command == ID_NORMAL || command == ID_SLOW) {
             interval = command==ID_FAST ? 500 : (command==ID_NORMAL ? 1000 : 2000);
             /* A constant sample interval makes the history time axis honest. */
@@ -548,7 +548,7 @@ static HMENU createMenu(void)
     AppendMenuA(priority,MF_STRING,ID_PRIORITY+1,"&Normal");
     AppendMenuA(priority,MF_STRING,ID_PRIORITY,"&Idle");
     AppendMenuA(help,MF_STRING,ID_COPY,"&Copy diagnostics");
-    AppendMenuA(help,MF_STRING,ID_ABOUT,"&About NTPERF31");
+    AppendMenuA(help,MF_STRING,ID_ABOUT,"&About NTPERF3X");
     AppendMenuA(menu,MF_POPUP,(WPARAM)file,"&File");
     AppendMenuA(menu,MF_POPUP,(WPARAM)options,"&Options");
     AppendMenuA(menu,MF_POPUP,(WPARAM)view,"&View");
@@ -567,7 +567,7 @@ static void runApp(void)
     char name[24];
     instance = GetModuleHandleA(NULL);
     if (!backendInit(&version)) {
-        MessageBoxA(NULL,"This program requires Windows NT and NtQuerySystemInformation.","NTPERF31",MB_OK|MB_ICONSTOP);
+        MessageBoxA(NULL,"This program requires Windows NT and NtQuerySystemInformation.","NTPERF3X",MB_OK|MB_ICONSTOP);
         ExitProcess(1);
     }
     GetSystemInfo(&sysInfo);
@@ -590,7 +590,7 @@ static void runApp(void)
     wc.hInstance = instance;
     wc.hIcon = LoadIconA(NULL,IDI_APPLICATION);
     wc.hCursor = LoadCursorA(NULL,IDC_ARROW);
-    wc.lpszClassName = "NTPerf31Window";
+    wc.lpszClassName = "NTPerf3xWindow";
     if (!RegisterClassA(&wc)) ExitProcess(2);
     SetRect(&bounds,0,0,620,434);
     AdjustWindowRect(&bounds,WS_OVERLAPPEDWINDOW,TRUE);
